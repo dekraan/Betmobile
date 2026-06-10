@@ -312,7 +312,7 @@ def calc_research_experiment_flags(
     rating_gap: float | None,
 ) -> tuple[bool, bool]:
     """
-    Zelfde idee als research_backtest_v6 danger_combo_v2.
+    Zelfde idee als research_backtest danger_combo_v2.
     Dit verandert GEEN pickselectie; het labelt alleen.
     """
     selected_odds = safe_float(selected_odds)

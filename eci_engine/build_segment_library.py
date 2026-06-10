@@ -4,7 +4,7 @@ from datetime import datetime
 import pandas as pd
 
 from config import OUTPUT_DIR
-from research_backtest_v6 import (
+from research_backtest import (
     load_picks_evaluated,
     prepare_picks_evaluated,
     summarize_bets,

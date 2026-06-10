@@ -27,7 +27,7 @@ from sqlalchemy import text
 
 from config import OUTPUT_DIR
 from db import db_engine
-from research_backtest_v6 import prepare_picks_evaluated, summarize_bets
+from research_backtest import prepare_picks_evaluated, summarize_bets
 
 
 EXPORT_DIR = OUTPUT_DIR / "research"
@@ -276,13 +276,36 @@ def export_strength_analysis(df: pd.DataFrame, output_path: Path | None = None) 
         baseline_roi,
         min_bets=1,
     )
+    by_strength_pick_type = summarize_group(
+        df,
+        ["strength_bucket", "pick_type"],
+        baseline_roi,
+        min_bets=1,
+    )
+    by_odds_strength = summarize_group(
+        df,
+        ["odds_bucket", "strength_bucket"],
+        baseline_roi,
+        min_bets=1,
+    )
+    by_odds_strength = sort_by_custom_order(
+        by_odds_strength,
+        "strength_bucket",
+        STRENGTH_ORDER,
+    )
     by_time = build_by_time_sheet(df, baseline_roi)
     summary = build_summary_sheet(df, baseline_roi)
-
+    by_strength_pick_type = sort_by_custom_order(
+        by_strength_pick_type,
+        "strength_bucket",
+        STRENGTH_ORDER,
+    )
     sheets = {
         "Summary": round_numeric_columns(summary),
         "By tier": round_numeric_columns(by_tier),
         "By strength": round_numeric_columns(by_strength),
+        "By strength x type": round_numeric_columns(by_strength_pick_type),
+        "By odds x strength": round_numeric_columns(by_odds_strength),
         "By pick_type": round_numeric_columns(by_pick_type),
         "By segment flags": round_numeric_columns(by_segment_flags),
         "By time": round_numeric_columns(by_time),
