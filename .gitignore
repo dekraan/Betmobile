@@ -1,0 +1,35 @@
+# --- Secrets (nooit committen) ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+
+# --- Logs & runtime output ---
+logs/
+output/
+eci_engine/output/*.xlsx
+eci_engine/output/**/*.xlsx
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# --- Oud archief (bevat oude code + secrets, niet nodig op GitHub) ---
+_archive/
+
+# --- Selenium / Chrome driver cache ---
+.wdm/
+chromedriver*
+*.log
