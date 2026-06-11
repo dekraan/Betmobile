@@ -11,6 +11,7 @@ from reporting import analyze_failures
 from exporters import save_to_db, save_excel, save_single_fails_to_db
 from utils import choose_relevant_side
 from single_fail_features import enrich_single_fail_features
+from model_snapshot_db import save_model_match_snapshots_to_db
 from near_miss_db import save_near_misses_to_db
 from config import (
     MIN_STRENGTH,
@@ -419,6 +420,7 @@ def main():
         
     # 6. Opslaan
     run_id = save_to_db(picks, calib_meta)
+    save_model_match_snapshots_to_db(df_all=df, picks=picks, run_id=run_id)
     save_single_fails_to_db(run_id, today_view)
     save_excel(picks, df_all=df, snap_watch=snap_watch, price_watch=price_watch, today_view=today_view, near_miss=near_miss)
     save_near_misses_to_db(near_miss, run_id=run_id)
