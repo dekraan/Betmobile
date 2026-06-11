@@ -119,7 +119,7 @@ def print_table(title: str, df: pd.DataFrame, max_rows: int = 30) -> None:
             "avg_drift_score", "avg_snapshots", "max_drawdown",
             "worst_month_roi", "best_month_roi", "monthly_roi_std",
             "last_50_roi", "min_rolling_roi_50", "max_rolling_roi_50",
-            "profit_per_100_bets",
+            "profit_per_100_bets", "positive_month_share",
         }:
             view[col] = pd.to_numeric(view[col], errors="coerce").round(4)
     print(view.to_string(index=False))
@@ -762,6 +762,132 @@ def summarize_picks_grouped(bets: pd.DataFrame, group_cols: list[str], min_bets:
     out = out[out["bets"] >= min_bets].copy()
     return out.sort_values(["roi", "bets"], ascending=[False, False])
 
+def build_strength_calibration_matrix(df: pd.DataFrame, min_bets: int = 10) -> pd.DataFrame:
+    """
+    Onderzoekt of hogere strength ook echt betere ROI/hitrate geeft.
+    Dit is research; verandert niets aan productie-calibratie.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    work = df.copy()
+    work["strength_value"] = pd.to_numeric(work["rule_strength_adj"], errors="coerce")
+
+    work["strength_range_fine"] = pd.cut(
+        work["strength_value"],
+        bins=[0, 1.5, 2, 2.5, 3, 3.5, 4, 5, np.inf],
+        labels=["<1.5", "1.5-2", "2-2.5", "2.5-3", "3-3.5", "3.5-4", "4-5", "5+"],
+        include_lowest=True,
+    )
+
+    group_sets = [
+        ["strength_range_fine"],
+        ["pick_type", "strength_range_fine"],
+        ["odds_bucket", "strength_range_fine"],
+        ["prob_bucket", "strength_range_fine"],
+        ["market_support", "strength_range_fine"],
+        ["value_bucket", "strength_range_fine"],
+        ["rating_gap_bucket", "strength_range_fine"],
+    ]
+
+    rows = []
+
+    for group_cols in group_sets:
+        table = (
+            work.groupby(group_cols, observed=True)
+            .agg(
+                bets=("profit", "size"),
+                wins=("won", "sum"),
+                profit=("profit", "sum"),
+                avg_odds=("selected_odds", "mean"),
+                avg_prob=("prob_selected", "mean"),
+                avg_value=("selected_value_score", "mean"),
+                avg_strength=("strength_value", "mean"),
+            )
+            .reset_index()
+        )
+
+        table["roi"] = table["profit"] / table["bets"]
+        table["hitrate"] = table["wins"] / table["bets"]
+        table["hitrate_minus_prob"] = table["hitrate"] - table["avg_prob"]
+        table["profit_per_100_bets"] = table["profit"] / table["bets"] * 100
+        table = table[table["bets"] >= min_bets].copy()
+
+        if table.empty:
+            continue
+
+        table.insert(0, "dimensions", " + ".join(group_cols))
+        rows.append(table)
+
+    if not rows:
+        return pd.DataFrame()
+
+    return pd.concat(rows, ignore_index=True, sort=False)
+
+def build_competition_quality_report(df: pd.DataFrame, min_bets: int = 5) -> pd.DataFrame:
+    """
+    Competitie-analyse op settled picks.
+    Let op: dit kijkt naar gespeelde picks, niet naar alle beschikbare wedstrijden.
+    Voor echte availability/pick-rate kunnen we later model_match_snapshots erbij pakken.
+    """
+    if df.empty or "competition" not in df.columns:
+        return pd.DataFrame()
+
+    out = (
+        df.groupby("competition", observed=True)
+        .agg(
+            bets=("profit", "size"),
+            wins=("won", "sum"),
+            profit=("profit", "sum"),
+            avg_odds=("selected_odds", "mean"),
+            avg_prob=("prob_selected", "mean"),
+            avg_value=("selected_value_score", "mean"),
+            avg_strength=("rule_strength_adj", "mean"),
+            avg_snapshots=("snapshots_used", "mean"),
+            avg_drift=("selected_drift_pct", "mean"),
+        )
+        .reset_index()
+    )
+
+    out["roi"] = out["profit"] / out["bets"]
+    out["hitrate"] = out["wins"] / out["bets"]
+    out["hitrate_minus_prob"] = out["hitrate"] - out["avg_prob"]
+
+    support = (
+        df.groupby(["competition", "market_support"], observed=True)
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    for col in ["SUPPORT", "NEUTRAL", "AGAINST"]:
+        if col not in support.columns:
+            support[col] = 0
+
+    support["support_share"] = support["SUPPORT"] / support.sum(axis=1).replace(0, np.nan)
+    support["against_share"] = support["AGAINST"] / support.sum(axis=1).replace(0, np.nan)
+
+    out = out.merge(
+        support[["support_share", "against_share"]].reset_index(),
+        on="competition",
+        how="left",
+    )
+
+    out["competition_label"] = np.select(
+        [
+            out["bets"] < 30,
+            (out["roi"] >= 0.10) & (out["hitrate_minus_prob"] >= 0),
+            (out["roi"] <= -0.10) & (out["hitrate_minus_prob"] < 0),
+        ],
+        [
+            "too_little_data",
+            "trusted_candidate",
+            "danger_candidate",
+        ],
+        default="neutral",
+    )
+
+    out = out[out["bets"] >= min_bets].copy()
+    return out.sort_values(["competition_label", "roi", "bets"], ascending=[True, False, False])
 
 def run_picks_evaluated_research(export_csv: bool = False) -> pd.DataFrame:
     print_header("BETMOBILE PICKS_EVALUATED RESEARCH")
@@ -782,6 +908,7 @@ def run_picks_evaluated_research(export_csv: bool = False) -> pd.DataFrame:
     by_type_strength = summarize_picks_grouped(df, ["pick_type", "strength_bucket"])
     by_comp = summarize_picks_grouped(df, ["competition"], min_bets=10)
     by_comp_type = summarize_picks_grouped(df, ["competition", "pick_type"], min_bets=10)
+    competition_quality = build_competition_quality_report(df, min_bets=5)
     by_drift = summarize_picks_grouped(df, ["drift_bucket"], min_bets=10)
     by_selection = summarize_picks_grouped(df, ["selection"])
     by_odds = summarize_picks_grouped(df, ["odds_bucket"], min_bets=10)
@@ -806,6 +933,7 @@ def run_picks_evaluated_research(export_csv: bool = False) -> pd.DataFrame:
     # Calibration
     calibration = build_calibration_table(df, ["prob_bucket"], min_bets=10)
     calibration_by_type = build_calibration_table(df, ["pick_type", "prob_bucket"], min_bets=10)
+    strength_calibration_matrix = build_strength_calibration_matrix(df, min_bets=10)
 
     # Special: longshots apart bekijken.
     longshots = df[df["selected_odds"] >= 3.0].copy()
@@ -819,6 +947,7 @@ def run_picks_evaluated_research(export_csv: bool = False) -> pd.DataFrame:
         "stored_picks_by_type_strength": by_type_strength,
         "stored_picks_by_comp": by_comp,
         "stored_picks_by_comp_type": by_comp_type,
+        "stored_picks_competition_quality": competition_quality,
         "stored_picks_by_drift": by_drift,
         "stored_picks_by_selection": by_selection,
         "stored_picks_by_odds": by_odds,
@@ -837,6 +966,7 @@ def run_picks_evaluated_research(export_csv: bool = False) -> pd.DataFrame:
         "stored_picks_by_season_phase": by_season_phase,
         "stored_picks_calibration": calibration,
         "stored_picks_calibration_by_type": calibration_by_type,
+        "stored_picks_strength_calibration_matrix": strength_calibration_matrix,
         "stored_picks_longshots_by_comp": by_longshot_comp,
         "stored_picks_longshots_by_prob": by_longshot_prob,
     }
@@ -861,6 +991,7 @@ def run_picks_evaluated_research(export_csv: bool = False) -> pd.DataFrame:
     print_table("PICKS BY TYPE + STRENGTH", by_type_strength)
     print_table("PICKS BY COMPETITION (min 10)", by_comp)
     print_table("PICKS BY COMPETITION + TYPE (min 10)", by_comp_type)
+    print_table("COMPETITION QUALITY REPORT", competition_quality, max_rows=80)
     print_table("PICKS BY DRIFT BUCKET (min 10)", by_drift)
     print_table("PICKS BY SELECTION", by_selection)
     print_table("PICKS BY ODDS BUCKET", by_odds)
@@ -882,7 +1013,8 @@ def run_picks_evaluated_research(export_csv: bool = False) -> pd.DataFrame:
 
     print_table("CALIBRATION: PROBABILITY VS HITRATE", calibration)
     print_table("CALIBRATION: PICK TYPE + PROBABILITY", calibration_by_type)
-
+    print_table("STRENGTH CALIBRATION MATRIX", strength_calibration_matrix, max_rows=60)
+    
     print_table("SPECIAL: LONGSHOTS BY COMPETITION", by_longshot_comp)
     print_table("SPECIAL: LONGSHOTS BY PROBABILITY", by_longshot_prob)
     print_table("DANGER ZONES", danger_zones)
@@ -1034,6 +1166,17 @@ def discover_segments(
         for _, r in table.iterrows():
             segment_parts = [f"{c}={r.get(c)}" for c in group_cols]
 
+            segment_bets = df.copy()
+
+            for c in group_cols:
+                segment_bets = segment_bets[segment_bets[c].astype(str) == str(r.get(c))]
+
+            stability = compute_stability_metrics(segment_bets, rolling_window=50)
+
+            months = stability.get("months", 0)
+            positive_months = stability.get("positive_months", 0)
+            positive_month_share = positive_months / months if months else 0.0
+
             rows.append({
                 "dimensions": " + ".join(group_cols),
                 "segment": " | ".join(segment_parts),
@@ -1048,6 +1191,18 @@ def discover_segments(
                 "avg_value": float(r.get("avg_value", np.nan)) if pd.notna(r.get("avg_value", np.nan)) else np.nan,
                 "avg_strength": float(r.get("avg_strength", np.nan)) if pd.notna(r.get("avg_strength", np.nan)) else np.nan,
                 "avg_snapshots": float(r.get("avg_snapshots", np.nan)) if pd.notna(r.get("avg_snapshots", np.nan)) else np.nan,
+
+                "months": months,
+                "positive_months": positive_months,
+                "positive_month_share": positive_month_share,
+                "worst_month_roi": stability.get("worst_month_roi", 0.0),
+                "best_month_roi": stability.get("best_month_roi", 0.0),
+                "monthly_roi_std": stability.get("monthly_roi_std", 0.0),
+                "max_drawdown": stability.get("max_drawdown", 0.0),
+                "last_50_roi": stability.get("last_50_roi", 0.0),
+                "min_rolling_roi_50": stability.get("min_rolling_roi_50", 0.0),
+                "max_rolling_roi_50": stability.get("max_rolling_roi_50", 0.0),
+                "profit_per_100_bets": stability.get("profit_per_100_bets", 0.0),
             })
 
     if not rows:
@@ -1090,6 +1245,207 @@ def discover_segments(
 
     return best_segments, worst_segments, interesting_segments
 
+# =====================================================================
+# MODE 1B: NEAR MISS RESEARCH
+# =====================================================================
+
+def load_near_miss_candidates() -> pd.DataFrame:
+    """Laad near-miss kandidaten en haal uitslag via eci_data als outcome ontbreekt."""
+    existing_relation_or_fail("picks_near_miss_candidates")
+    available = get_table_columns("picks_near_miss_candidates")
+
+    wanted = [
+        "run_id", "match_id", "date", "competition", "home_team", "away_team",
+        "side", "fail_reason", "single_fail_margin",
+        "prob_margin", "value_margin", "odds_margin", "drift_margin",
+        "rating_margin", "edge_margin", "snap_needed",
+        "selected_prob", "selected_value", "selected_odds", "selected_drift",
+        "strength",
+        "score", "result", "outcome", "settled_at",
+    ]
+
+    cols = [c for c in wanted if c in available]
+
+    required = ["match_id", "side", "fail_reason", "selected_odds"]
+    missing = [c for c in required if c not in available]
+    if missing:
+        raise RuntimeError(
+            "Deze verplichte kolommen ontbreken in picks_near_miss_candidates: "
+            + ", ".join(missing)
+        )
+
+    select_list = ",\n            nm.".join(cols)
+
+    q = f"""
+        SELECT
+            nm.{select_list},
+            eci.eci_score AS eci_score
+        FROM public.picks_near_miss_candidates nm
+        LEFT JOIN public.eci_data eci
+          ON eci.match_id = nm.match_id
+        WHERE nm.side IS NOT NULL
+    """
+
+    with db_engine().connect() as conn:
+        df = pd.read_sql(q, conn)
+
+    print(f"[near_miss_candidates] rows loaded: {len(df)}")
+    return df
+
+
+def prepare_near_miss_candidates(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    numeric_cols = [
+        "single_fail_margin",
+        "prob_margin", "value_margin", "odds_margin", "drift_margin",
+        "rating_margin", "edge_margin", "snap_needed",
+        "selected_prob", "selected_value", "selected_odds",
+        "selected_drift", "strength",
+    ]
+
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df["selection"] = df["side"]
+    df["probability"] = df["selected_prob"]
+    df["value_score"] = df["selected_value"]
+    df["odds"] = df["selected_odds"]
+    df["drift_pct"] = df["selected_drift"]
+    df["rating_gap"] = np.nan
+
+    if "outcome" not in df.columns:
+        df["outcome"] = None
+
+    if "score" not in df.columns:
+        df["score"] = None
+
+    # fallback: gebruik eci_score als score als score ontbreekt
+    if "eci_score" in df.columns:
+        df["score"] = df["score"].combine_first(df["eci_score"])
+
+    df["result_code"] = df.apply(normalize_result, axis=1)
+
+    df["selected_code"] = np.select(
+        [
+            df["side"] == "HOME",
+            df["side"] == "AWAY",
+            df["side"] == "DRAW",
+        ],
+        ["H", "A", "D"],
+        default=None,
+    )
+
+    df = df[df["result_code"].isin(["H", "D", "A"])].copy()
+
+    df["won"] = df["selected_code"] == df["result_code"]
+    df["profit"] = np.where(df["won"], df["selected_odds"] - 1.0, -1.0)
+    df["outcome"] = np.where(df["won"], "WIN", "LOSS")
+
+    df["single_fail_raw_strength"] = df["strength"]
+    df["strength_bucket"] = df["strength"].apply(make_strength_bucket)
+
+    df["margin_bucket"] = pd.cut(
+        df["single_fail_margin"],
+        bins=[-np.inf, -5, -2, -1, -0.25, 0, 0.01, 0.03, 0.05, 0.10, np.inf],
+        labels=["<-5", "-5/-2", "-2/-1", "-1/-0.25", "-0.25/0", "0/0.01", "0.01/0.03", "0.03/0.05", "0.05/0.10", "0.10+"],
+    )
+
+    df["drift_bucket"] = pd.cut(
+        df["selected_drift"],
+        bins=[-np.inf, -0.10, -0.05, -0.03, 0.00, 0.03, 0.05, 0.10, np.inf],
+        labels=["<=-10%", "-10/-5%", "-5/-3%", "-3/0%", "0/3%", "3/5%", "5/10%", ">10%"],
+    )
+
+    df = add_common_research_features(df, kind="singlefail")
+    return df
+
+
+def summarize_near_miss_grouped(
+    bets: pd.DataFrame,
+    group_cols: list[str],
+    min_bets: int = 1,
+) -> pd.DataFrame:
+    if bets.empty:
+        return pd.DataFrame()
+
+    out = (
+        bets.groupby(group_cols, observed=True)
+        .agg(
+            bets=("profit", "size"),
+            wins=("won", "sum"),
+            profit=("profit", "sum"),
+            avg_odds=("selected_odds", "mean"),
+            avg_prob=("selected_prob", "mean"),
+            avg_value=("selected_value", "mean"),
+            avg_strength=("strength", "mean"),
+            avg_margin=("single_fail_margin", "mean"),
+            avg_drift=("selected_drift", "mean"),
+        )
+        .reset_index()
+    )
+
+    out["roi"] = out["profit"] / out["bets"]
+    out["hitrate"] = out["wins"] / out["bets"]
+    out = out[out["bets"] >= min_bets].copy()
+    return out.sort_values(["roi", "bets"], ascending=[False, False])
+
+def run_near_miss_research(export_csv: bool = False) -> pd.DataFrame:
+    print_header("BETMOBILE NEAR MISS RESEARCH")
+
+    raw = load_near_miss_candidates()
+    df = prepare_near_miss_candidates(raw)
+
+    if df.empty:
+        print("Geen gesettelde near misses gevonden.")
+        print("De near-miss tabel bevat wel records, maar nog zonder bruikbare eindscore/resultaat.")
+        print("Dit is normaal zolang deze wedstrijden nog niet gespeeld of nog niet gesettled zijn.")
+        return df
+
+    print_header("OVERALL NEAR MISS RESULTS")
+    print_result(summarize_bets("NEAR_MISS ALL", df))
+
+    by_reason = summarize_near_miss_grouped(df, ["fail_reason"])
+    by_reason_margin = summarize_near_miss_grouped(df, ["fail_reason", "margin_bucket"], min_bets=10)
+    by_reason_strength = summarize_near_miss_grouped(df, ["fail_reason", "strength_bucket"], min_bets=10)
+    by_reason_support = summarize_near_miss_grouped(df, ["fail_reason", "market_support"], min_bets=10)
+    by_comp_reason = summarize_near_miss_grouped(df, ["competition", "fail_reason"], min_bets=10)
+    by_odds_reason = summarize_near_miss_grouped(df, ["fail_reason", "odds_bucket"], min_bets=10)
+    by_prob_reason = summarize_near_miss_grouped(df, ["fail_reason", "prob_bucket"], min_bets=10)
+
+    print_table("NEAR MISS BY REASON", by_reason)
+    print_table("NEAR MISS BY REASON + MARGIN", by_reason_margin)
+    print_table("NEAR MISS BY REASON + STRENGTH", by_reason_strength)
+    print_table("NEAR MISS BY REASON + MARKET SUPPORT", by_reason_support)
+    print_table("NEAR MISS BY COMPETITION + REASON", by_comp_reason)
+    print_table("NEAR MISS BY REASON + ODDS", by_odds_reason)
+    print_table("NEAR MISS BY REASON + PROBABILITY", by_prob_reason)
+
+    if export_csv:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        detail_path = EXPORT_DIR / f"near_miss_detail_{stamp}.csv"
+        df.to_csv(detail_path, index=False, encoding="utf-8-sig")
+        print(f"[export] {detail_path}")
+
+        tables = {
+            "near_miss_by_reason": by_reason,
+            "near_miss_by_reason_margin": by_reason_margin,
+            "near_miss_by_reason_strength": by_reason_strength,
+            "near_miss_by_reason_support": by_reason_support,
+            "near_miss_by_comp_reason": by_comp_reason,
+            "near_miss_by_reason_odds": by_odds_reason,
+            "near_miss_by_reason_prob": by_prob_reason,
+        }
+
+        for name, table in tables.items():
+            if table is not None and not table.empty:
+                path = EXPORT_DIR / f"{name}_{stamp}.csv"
+                table.to_csv(path, index=False, encoding="utf-8-sig")
+                print(f"[export] {path}")
+
+    return df
 
 # =====================================================================
 # MODE 2: SINGLE_FAIL CANDIDATES RESEARCH
@@ -1279,17 +1635,22 @@ def run_single_fail_research(export_csv: bool = False) -> pd.DataFrame:
 
 
 def run_all_research(export_csv: bool = False) -> None:
-    """Draai picks_evaluated en daarna, als beschikbaar, single-fail candidates."""
+    """Draai picks_evaluated, near misses en single-fail candidates als beschikbaar."""
     run_picks_evaluated_research(export_csv=export_csv)
 
     try:
+        existing_relation_or_fail("picks_near_miss_candidates")
+        run_near_miss_research(export_csv=export_csv)
+    except RuntimeError:
+        print_header("NEAR MISS CANDIDATES")
+        print("Tabel public.picks_near_miss_candidates bestaat nog niet.")
+
+    try:
         existing_relation_or_fail("picks_single_fail_candidates")
+        run_single_fail_research(export_csv=export_csv)
     except RuntimeError:
         print_header("SINGLE_FAIL CANDIDATES")
         print("Tabel public.picks_single_fail_candidates bestaat nog niet.")
-        return
-
-    run_single_fail_research(export_csv=export_csv)
 
 # =====================================================================
 # MODE 3: HISTORICAL VIEW BACKTEST
@@ -1617,12 +1978,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Betmobile research backtest")
     parser.add_argument(
         "--mode",
-        choices=["all", "picks", "singlefails", "historical"],
+        choices=["all", "picks", "singlefails", "nearmiss", "historical"],
         default="all",
         help=(
             "all = picks + singlefails; "
             "picks = public.picks_evaluated; "
             "singlefails = public.picks_single_fail_candidates; "
+            "nearmiss = public.picks_near_miss_candidates; "            
             "historical = brede bronview backtesten"
         ),
     )
@@ -1653,6 +2015,8 @@ if __name__ == "__main__":
         run_picks_evaluated_research(export_csv=args.export_csv)
     elif args.mode == "singlefails":
         run_single_fail_research(export_csv=args.export_csv)
+    elif args.mode == "nearmiss":
+        run_near_miss_research(export_csv=args.export_csv)
     else:
         run_historical_backtest(
             source=args.source,

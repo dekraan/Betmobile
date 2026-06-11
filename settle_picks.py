@@ -63,6 +63,30 @@ WHERE sf.match_id = e.match_id
   AND e.eci_score ~ '^[0-9]+-[0-9]+$';
 """
 
+SQL_SETTLE_NEAR_MISSES = """
+UPDATE public.picks_near_miss_candidates nm
+SET
+    score = e.eci_score,
+    result = CASE
+        WHEN split_part(e.eci_score, '-', 1)::int > split_part(e.eci_score, '-', 2)::int THEN 'HOME'
+        WHEN split_part(e.eci_score, '-', 1)::int < split_part(e.eci_score, '-', 2)::int THEN 'AWAY'
+        ELSE 'DRAW'
+    END,
+    outcome = CASE
+        WHEN nm.side = CASE
+            WHEN split_part(e.eci_score, '-', 1)::int > split_part(e.eci_score, '-', 2)::int THEN 'HOME'
+            WHEN split_part(e.eci_score, '-', 1)::int < split_part(e.eci_score, '-', 2)::int THEN 'AWAY'
+            ELSE 'DRAW'
+        END THEN 'WIN'
+        ELSE 'LOSS'
+    END,
+    settled_at = NOW()
+FROM public.eci_data e
+WHERE nm.match_id = e.match_id
+  AND nm.outcome IS NULL
+  AND e.eci_score ~ '^[0-9]+-[0-9]+$';
+"""
+
 SQL_SUMMARY = """
 SELECT
     'picks_evaluated' AS table_name,
@@ -78,7 +102,16 @@ SELECT
     COUNT(*),
     COUNT(*) FILTER (WHERE outcome IS NOT NULL),
     COUNT(*) FILTER (WHERE outcome IS NULL)
-FROM public.picks_single_fail_candidates;
+FROM public.picks_single_fail_candidates
+
+UNION ALL
+
+SELECT
+    'picks_near_miss_candidates',
+    COUNT(*),
+    COUNT(*) FILTER (WHERE outcome IS NOT NULL),
+    COUNT(*) FILTER (WHERE outcome IS NULL)
+FROM public.picks_near_miss_candidates;
 """
 
 
@@ -101,10 +134,14 @@ def main() -> None:
                 cur.execute(SQL_SETTLE_SINGLE_FAILS)
                 updated_single_fails = cur.rowcount
 
+                cur.execute(SQL_SETTLE_NEAR_MISSES)
+                updated_near_misses = cur.rowcount
+
                 conn.commit()
 
                 log(f"Updated picks_evaluated: {updated_picks}")
                 log(f"Updated picks_single_fail_candidates: {updated_single_fails}")
+                log(f"Updated picks_near_miss_candidates: {updated_near_misses}")
 
                 cur.execute(SQL_SUMMARY)
                 rows = cur.fetchall()
