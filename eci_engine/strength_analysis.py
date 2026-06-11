@@ -239,6 +239,94 @@ def build_by_time_sheet(df: pd.DataFrame, baseline_roi: float) -> pd.DataFrame:
         return pd.DataFrame()
     return pd.concat(parts, ignore_index=True)
 
+def build_strength_distribution_sheet(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Laat zien hoe de ruwe strength verdeeld is.
+    Handig om te begrijpen wat '3.35' betekent.
+    """
+    if df.empty or "rule_strength_adj" not in df.columns:
+        return pd.DataFrame()
+
+    work = df.copy()
+    work["strength_value"] = pd.to_numeric(work["rule_strength_adj"], errors="coerce")
+    work = work[work["strength_value"].notna()].copy()
+
+    if work.empty:
+        return pd.DataFrame()
+
+    # Fijnere buckets dan de gewone strength_bucket
+    work["strength_range"] = pd.cut(
+        work["strength_value"],
+        bins=[0, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, np.inf],
+        labels=[
+            "<1.5",
+            "1.5-2",
+            "2-2.5",
+            "2.5-3",
+            "3-3.5",
+            "3.5-4",
+            "4-5",
+            "5-6",
+            "6-7",
+            "7-8",
+            "8+",
+        ],
+        include_lowest=True,
+    )
+
+    dist = (
+        work.groupby("strength_range", observed=True)
+        .agg(
+            bets=("profit", "size"),
+            wins=("won", "sum"),
+            profit=("profit", "sum"),
+            avg_odds=("selected_odds", "mean"),
+            avg_prob=("prob_selected", "mean"),
+            avg_strength=("strength_value", "mean"),
+            min_strength=("strength_value", "min"),
+            max_strength=("strength_value", "max"),
+        )
+        .reset_index()
+    )
+
+    dist["losses"] = dist["bets"] - dist["wins"]
+    dist["roi"] = dist["profit"] / dist["bets"]
+    dist["hitrate"] = dist["wins"] / dist["bets"]
+    dist["share_of_total"] = dist["bets"] / len(work)
+
+    stats = pd.DataFrame(
+        [
+            {"metric": "count", "value": len(work)},
+            {"metric": "min", "value": work["strength_value"].min()},
+            {"metric": "p10", "value": work["strength_value"].quantile(0.10)},
+            {"metric": "p25", "value": work["strength_value"].quantile(0.25)},
+            {"metric": "median", "value": work["strength_value"].median()},
+            {"metric": "p75", "value": work["strength_value"].quantile(0.75)},
+            {"metric": "p90", "value": work["strength_value"].quantile(0.90)},
+            {"metric": "p95", "value": work["strength_value"].quantile(0.95)},
+            {"metric": "max", "value": work["strength_value"].max()},
+            {"metric": "mean", "value": work["strength_value"].mean()},
+        ]
+    )
+
+    stats["value"] = pd.to_numeric(stats["value"], errors="coerce").round(4)
+
+    # Zet stats bovenaan en distributie daaronder in één sheet
+    spacer = pd.DataFrame([{}])
+    section_stats = pd.DataFrame({"section": ["SUMMARY STATS"]})
+    section_dist = pd.DataFrame({"section": ["DISTRIBUTION"]})
+
+    return pd.concat(
+        [
+            section_stats,
+            stats,
+            spacer,
+            section_dist,
+            dist,
+        ],
+        ignore_index=True,
+        sort=False,
+    )
 
 def round_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -294,6 +382,7 @@ def export_strength_analysis(df: pd.DataFrame, output_path: Path | None = None) 
         STRENGTH_ORDER,
     )
     by_time = build_by_time_sheet(df, baseline_roi)
+    strength_distribution = build_strength_distribution_sheet(df)
     summary = build_summary_sheet(df, baseline_roi)
     by_strength_pick_type = sort_by_custom_order(
         by_strength_pick_type,
@@ -304,6 +393,7 @@ def export_strength_analysis(df: pd.DataFrame, output_path: Path | None = None) 
         "Summary": round_numeric_columns(summary),
         "By tier": round_numeric_columns(by_tier),
         "By strength": round_numeric_columns(by_strength),
+        "Strength distribution": round_numeric_columns(strength_distribution),
         "By strength x type": round_numeric_columns(by_strength_pick_type),
         "By odds x strength": round_numeric_columns(by_odds_strength),
         "By pick_type": round_numeric_columns(by_pick_type),
