@@ -1,32 +1,45 @@
+# team_matching_eci_oddspedia.py
+import json
+from pathlib import Path
+from datetime import datetime, timezone
 import pandas as pd
 import psycopg2
 import re
 import unicodedata
 import logging
-from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from fuzzywuzzy import fuzz
 from jellyfish import jaro_winkler_similarity, metaphone, soundex
 
 # ============== CONFIG ==============
 CURRENT_USER = "dekraan"
-NOW_UTC = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+NOW_UTC = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
-from betmobile_settings import DB_CONFIG
+DB_CONFIG = {
+    "host": "localhost",
+    "port": 5432,
+    "database": "Betmobile",
+    "user": "postgres",
+    "password": "300500",
+}
 
-LOGFILE = f"team_matching_eci_api_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+# Pad naar je 2-richtingen mapping (uit de builder)
+MAPPING_JSON = r"C:\Users\Gebruiker\Documents\Betmobile\team_mappings_eci_oddspedia.json"
 
+# Logging
 logging.basicConfig(
-    filename=LOGFILE,
+    filename=f"team_matching_eci_oddspedia_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
+# Interactie-tuning
 TOPN_SUGGESTIONS = 7
-MIN_SUGGESTION_SCORE = 60
-
-REMOVABLE_PREFIXES = r"\b(fc|cf|ac|sc|afc|bk|fk|nk|if|sk|ud|cd|sd|ss|ks|ksk|ofk|pfc|cfr)\b"
+MIN_SUGGESTION_SCORE = 60  # toon alleen ECI-kandidaten met score >= 60
 
 # ============ Normalisatie & Scoring ============
+REMOVABLE_PREFIXES = r'\b(fc|cf|ac|sc|afc|bk|fk|nk|if|sk|ud|cd|sd|ss|ks|ksk|ofk|pfc|cfr)\b'
+
 def normalize_name(name: str) -> str:
     if not name:
         return ""
@@ -36,23 +49,33 @@ def normalize_name(name: str) -> str:
     s = " ".join(s.split())
     return s
 
+def clean_team_name(name: str) -> str:
+    if not name:
+        return ""
+
+    s = str(name).strip()
+
+    # Alleen eerste regel pakken: voorkomt "Arda Kardzhali\nPEN"
+    s = s.splitlines()[0].strip()
+
+    # Losse statusrommel weghalen
+    bad_tokens = {"PEN", "AET", "FT", "HT"}
+    if s.upper() in bad_tokens:
+        return ""
+
+    return s
 
 def score_pair(a: str, b: str) -> dict:
     n1, n2 = normalize_name(a), normalize_name(b)
-
     partial = fuzz.partial_ratio(n1, n2)
     ratio = fuzz.ratio(n1, n2)
     jw = int(jaro_winkler_similarity(n1, n2) * 100)
-
     lw1 = n1.split()[-1] if n1.split() else ""
     lw2 = n2.split()[-1] if n2.split() else ""
     last_word = fuzz.ratio(lw1, lw2)
-
     contained = 20 if (n1 in n2 or n2 in n1) else 0
     phon = 15 if (metaphone(n1) == metaphone(n2) or soundex(n1) == soundex(n2)) else 0
-
-    weighted = min(100, 0.45 * ratio + 0.25 * partial + 0.20 * last_word + 0.10 * jw + contained + phon)
-
+    weighted = min(100, 0.45*ratio + 0.25*partial + 0.20*last_word + 0.10*jw + contained + phon)
     return {
         "ratio": ratio,
         "partial": partial,
@@ -63,309 +86,252 @@ def score_pair(a: str, b: str) -> dict:
         "weighted": round(weighted, 1),
     }
 
-
 def score_str(s: dict) -> str:
-    return (
-        f"weighted {s['weighted']} | ratio {s['ratio']}, "
-        f"partial {s['partial']}, jw {s['jaro_winkler']}, last {s['last_word']} "
-        f"(+{s['contained_bonus']}/+{s['phonetic_bonus']})"
-    )
-
+    return (f"weighted {s['weighted']} | ratio {s['ratio']}, "
+            f"partial {s['partial']}, jw {s['jaro_winkler']}, last {s['last_word']} "
+            f"(+{s['contained_bonus']}/+{s['phonetic_bonus']})")
 
 # ============== Kernklasse ==============
-class ECIAPIMatcher:
-    def __init__(self):
+class ECIOddMatcher:
+    def __init__(self, mapping_json: str):
+        self.path = Path(mapping_json)
+        self.data = self._load_or_init_json()
         self.undo_stack = []
         self._load_names_from_db()
 
-    def _get_conn(self):
-        return psycopg2.connect(**DB_CONFIG)
+    # ---- IO ----
+    def _load_or_init_json(self):
+        if self.path.exists():
+            with open(self.path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            # zorg dat structuur aanwezig is
+            d.setdefault("mapping", {})
+            d["mapping"].setdefault("oddspedia_to_eci", {})
+            d["mapping"].setdefault("eci_to_oddspedia", {})
+            d.setdefault("meta", {})
+            return d
+        return {
+            "meta": {
+                "generated_at_utc": NOW_UTC,
+                "generated_by": CURRENT_USER,
+                "notes": "Oddspedia ↔ ECI mapping only (interactive)."
+            },
+            "mapping": {
+                "oddspedia_to_eci": {},
+                "eci_to_oddspedia": {}
+            },
+            "needs_review": []
+        }
 
+    def save(self):
+        self.data["meta"]["last_saved_utc"] = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        self.data["meta"]["last_saved_by"] = CURRENT_USER
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=2)
+        logging.info("Saved mapping JSON")
+
+    # ---- DB ----
     def _load_names_from_db(self):
-        with self._get_conn() as conn:
-            # ECI teams + competitie + api_league_id via league_aliases
-            self.eci_df = pd.read_sql(
-                """
-                WITH eci_teams AS (
-                    SELECT DISTINCT
-                        trim(ed.home_team) AS eci_team_name,
-                        ed.competition
-                    FROM eci_data ed
+        with psycopg2.connect(**DB_CONFIG) as conn:
+            odd = pd.read_sql("SELECT home_team, away_team FROM oddspedia_unibet_backbone", conn)
+            eci = pd.read_sql("SELECT home_team, away_team FROM eci_data", conn)
+        odd_names = set(odd["home_team"]).union(odd["away_team"])
+        eci_names = set(eci["home_team"]).union(eci["away_team"])
 
-                    UNION
+        self.odd_names = sorted({
+            clean_team_name(x)
+            for x in odd_names
+            if clean_team_name(x)
+        })
 
-                    SELECT DISTINCT
-                        trim(ed.away_team) AS eci_team_name,
-                        ed.competition
-                    FROM eci_data ed
-                )
-                SELECT
-                    e.eci_team_name,
-                    e.competition,
-                    la.api_league_id
-                FROM eci_teams e
-                JOIN league_aliases la
-                  ON la.eci_key = e.competition
-                ORDER BY e.competition, e.eci_team_name
-                """,
-                conn,
-            )
+        self.eci_names = sorted({
+            clean_team_name(x)
+            for x in eci_names
+            if clean_team_name(x)
+        })
 
-            # API teams alleen binnen leagues die in league_aliases staan
-            self.api_df = pd.read_sql(
-                """
-                SELECT DISTINCT
-                    f.league_id AS api_league_id,
-                    t.team_id AS api_team_id,
-                    trim(t.name) AS api_team_name,
-                    l.country AS api_country
-                FROM fixtures f
-                JOIN teams t
-                  ON t.team_id = f.home_team_id
-                  OR t.team_id = f.away_team_id
-                JOIN leagues l
-                  ON l.league_id = f.league_id
-                JOIN league_aliases la
-                  ON la.api_league_id = f.league_id
-                ORDER BY api_league_id, api_team_name
-                """,
-                conn,
-            )
+    def unmapped_odd(self):
+        mapped = set(clean_team_name(x) for x in self.data["mapping"]["oddspedia_to_eci"].keys())
+        eci_exact = set(clean_team_name(x) for x in self.eci_names)
 
-            # Al gematchte ECI namen
-            matched = pd.read_sql(
-                """
-                SELECT DISTINCT eci_team_name
-                FROM team_aliases
-                WHERE is_active = true
-                """,
-                conn,
-            )
+        remaining = []
 
-        self.matched_eci_names = set(matched["eci_team_name"].tolist())
-        logging.info("Loaded ECI/API data from DB")
+        for t in self.odd_names:
+            clean = clean_team_name(t)
 
-    def reload(self):
-        self._load_names_from_db()
+            if not clean:
+                continue
 
-    def unmapped_eci(self):
-        df = self.eci_df[~self.eci_df["eci_team_name"].isin(self.matched_eci_names)].copy()
-        df = df.drop_duplicates(subset=["eci_team_name", "competition", "api_league_id"])
-        return df.sort_values(["competition", "eci_team_name"]).reset_index(drop=True)
+            # staat al in mapping-json
+            if clean in mapped:
+                continue
 
-    def suggestions_for_eci(self, eci_name: str, api_league_id: int, topn=TOPN_SUGGESTIONS, min_score=MIN_SUGGESTION_SCORE):
+            # bestaat exact als ECI-teamnaam
+            if clean in eci_exact:
+                continue
+
+            remaining.append(clean)
+
+        return sorted(set(remaining))
+
+    # ---- Suggesties & zoeken ----
+    def suggestions_for_odd(self, odd_name: str, topn=TOPN_SUGGESTIONS, min_score=MIN_SUGGESTION_SCORE):
         out = []
-
-        candidates = self.api_df[self.api_df["api_league_id"] == api_league_id].copy()
-
-        for _, row in candidates.iterrows():
-            api_name = row["api_team_name"]
-            api_id = int(row["api_team_id"])
-            api_country = row["api_country"]
-
-            s = score_pair(eci_name, api_name)
-
+        for eci in self.eci_names:
+            s = score_pair(odd_name, eci)
             if s["weighted"] >= min_score:
-                out.append((api_id, api_name, api_country, s))
-
-        out.sort(key=lambda x: x[3]["weighted"], reverse=True)
+                out.append((eci, s))
+        out.sort(key=lambda x: x[1]["weighted"], reverse=True)
         return out[:topn]
 
-    def search_api(self, query: str, api_league_id: int, topn=15):
+    def search_eci(self, query: str, topn=15):
         qn = normalize_name(query)
         rows = []
-
-        candidates = self.api_df[self.api_df["api_league_id"] == api_league_id].copy()
-
-        for _, row in candidates.iterrows():
-            api_name = row["api_team_name"]
-            api_id = int(row["api_team_id"])
-            api_country = row["api_country"]
-
-            s = score_pair(qn, api_name)
-            rows.append((api_id, api_name, api_country, s))
-
-        rows.sort(key=lambda x: x[3]["weighted"], reverse=True)
+        for eci in self.eci_names:
+            s = score_pair(qn, eci)  # score t.o.v. genormaliseerde query
+            rows.append((eci, s))
+        rows.sort(key=lambda x: x[1]["weighted"], reverse=True)
         return rows[:topn]
 
-    def save_match(self, eci_name: str, api_id: int, api_name: str, api_country: str, api_league_id: int):
-        with self._get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO team_aliases (
-                        eci_team_name,
-                        api_team_id,
-                        api_team_name,
-                        api_country,
-                        api_league_id,
-                        match_method,
-                        is_active,
-                        notes
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, true, %s)
-                    ON CONFLICT (eci_team_name, api_team_id) DO NOTHING
-                    RETURNING alias_id
-                    """,
-                    (
-                        eci_name,
-                        api_id,
-                        api_name,
-                        api_country,
-                        api_league_id,
-                        "manual",
-                        f"matched by {CURRENT_USER} at {NOW_UTC}",
-                    ),
-                )
-                row = cur.fetchone()
-                conn.commit()
+    # ---- Mappen + undo ----
+    def set_pair(self, odd_name: str, eci_name: str):
+        odd_name = clean_team_name(odd_name)
+        eci_name = clean_team_name(eci_name)
 
-        self.undo_stack.append((eci_name, api_id))
-        self.matched_eci_names.add(eci_name)
-        logging.info(f"Saved match: {eci_name} -> {api_name} ({api_id})")
+        prev_odd2eci = self.data["mapping"]["oddspedia_to_eci"].get(odd_name)
+        prev_eci2odd = self.data["mapping"]["eci_to_oddspedia"].get(eci_name)
 
-        return row[0] if row else None
+        self.undo_stack.append(("set", odd_name, prev_odd2eci, eci_name, prev_eci2odd))
+
+        # Belangrijk:
+        # meerdere Oddspedia-namen mogen naar dezelfde ECI-naam wijzen.
+        self.data["mapping"]["oddspedia_to_eci"][odd_name] = eci_name
+
+        # Reverse is alleen informatief; niet meer gebruiken als harde unieke koppeling.
+        self.data["mapping"]["eci_to_oddspedia"][eci_name] = odd_name
 
     def undo(self):
         if not self.undo_stack:
             return "Nothing to undo."
+        action, odd_name, prev_odd2eci, eci_name, prev_eci2odd = self.undo_stack.pop()
+        if action == "set":
+            # herstel odd->eci
+            if prev_odd2eci is None:
+                self.data["mapping"]["oddspedia_to_eci"].pop(odd_name, None)
+            else:
+                self.data["mapping"]["oddspedia_to_eci"][odd_name] = prev_odd2eci
+            # herstel eci->odd
+            if prev_eci2odd is None:
+                self.data["mapping"]["eci_to_oddspedia"].pop(eci_name, None)
+            else:
+                self.data["mapping"]["eci_to_oddspedia"][eci_name] = prev_eci2odd
+            return f"Undid mapping {odd_name} ↔ {eci_name}"
+        return "Unknown undo action."
 
-        eci_name, api_id = self.undo_stack.pop()
-
-        with self._get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    DELETE FROM team_aliases
-                    WHERE eci_team_name = %s
-                      AND api_team_id = %s
-                    """,
-                    (eci_name, api_id),
-                )
-                deleted = cur.rowcount
-                conn.commit()
-
-        self.reload()
-
-        if deleted:
-            logging.info(f"Undo deleted match: {eci_name} -> api_team_id={api_id}")
-            return f"Undid mapping {eci_name} ↔ api_team_id {api_id}"
-        return "Nothing deleted."
-
+    # ---- Stats ----
     def stats_line(self):
-        total_eci = self.eci_df["eci_team_name"].nunique()
-        mapped_eci = len(self.matched_eci_names)
-        total_api = self.api_df["api_team_id"].nunique()
-
-        return (
-            f"ECI teams: {total_eci} (mapped {mapped_eci}) | "
-            f"API teams in mapped leagues: {total_api}"
-        )
-
+        return (f"Oddspedia teams: {len(self.odd_names)} "
+                f"(mapped {len(self.data['mapping']['oddspedia_to_eci'])}) | "
+                f"ECI teams: {len(self.eci_names)} "
+                f"(mapped {len(self.data['mapping']['eci_to_oddspedia'])})")
 
 # ============== Interactieve loop ==============
 def interactive_loop():
-    m = ECIAPIMatcher()
-
-    print("ECI ↔ API-Football Team Matcher (interactive)")
+    m = ECIOddMatcher(MAPPING_JSON)
+    print("ECI ↔ Oddspedia Team Matcher (interactive)")
     print(f"UTC: {NOW_UTC} | user: {CURRENT_USER}")
+    remaining_now = m.unmapped_odd()
+
     print(m.stats_line())
-    print(f"Logfile: {LOGFILE}")
+    print(f"Nog handmatig te beoordelen: {len(remaining_now)}")
+
+    if remaining_now:
+        print("Eerste 25:")
+        for name in remaining_now[:25]:
+            print(f" - {name}")
     logging.info("Interactive matcher started")
 
+    # >>> NIEUW: sessie-skips (niet persistent)
     skipped_session = set()
+
     idx = 0
-
     while True:
-        remaining_df = m.unmapped_eci()
-        remaining_df = remaining_df[~remaining_df["eci_team_name"].isin(skipped_session)]
+        # >>> NIEUW: filter de sessie-skips weg
+        remaining = [t for t in m.unmapped_odd() if t not in skipped_session]
 
-        if remaining_df.empty:
-            print("\n🎉 Geen unmatched ECI-teams meer in deze sessie.")
+        print(f"\nNog over deze sessie: {len(remaining)}")
+        if not remaining:
+            print("\n🎉 Geen onbehepte Oddspedia-teams meer. Gereed!")
+            m.save()
             break
 
-        row = remaining_df.iloc[0]
-        eci_name = row["eci_team_name"]
-        competition = row["competition"]
-        api_league_id = int(row["api_league_id"])
-
+        remaining.sort()
+        odd = remaining[0]
         idx += 1
-
-        print("\n" + "=" * 80)
-        print(f"[{idx}] ECI team : {eci_name}")
-        print(f"    Comp     : {competition}")
-        print(f"    API league_id : {api_league_id}")
-
-        suggs = m.suggestions_for_eci(eci_name, api_league_id)
+        print("\n" + "="*70)
+        print(f"[{idx}] Oddspedia: {odd}")
+        suggs = m.suggestions_for_odd(odd)
 
         if suggs:
-            print("\nSuggesties (API teams):")
-            for i, (api_id, api_name, api_country, sc) in enumerate(suggs, 1):
-                print(f"  {i}. {api_name} [id={api_id}, country={api_country}]   [{score_str(sc)}]")
+            print("\nSuggesties (ECI):")
+            for i, (eci, sc) in enumerate(suggs, 1):
+                print(f"  {i}. {eci}   [{score_str(sc)}]")
         else:
-            print(f"\nGeen automatische suggesties ≥ {MIN_SUGGESTION_SCORE}")
+            print("\nGeen automatische suggesties ≥", MIN_SUGGESTION_SCORE)
 
         print("\nKies actie:")
         print("  - Typ een nummer (1..N) om die suggestie te kiezen")
-        print("  - s = zoeken in API-teams binnen dezelfde league")
-        print("  - k = skip deze ECI-naam (alleen deze sessie)")
+        print("  - s = zoeken in ECI")
+        print("  - k = skip deze Oddspedia-naam")
         print("  - u = undo laatste mapping")
-        print("  - r = refresh data uit database")
-        print("  - q = quit")
-
+        print("  - q = save & quit")
         choice = input("> ").strip().lower()
 
         if choice == "q":
-            print("Stoppen.")
+            m.save()
+            print("Progress opgeslagen. Stoppen.")
             break
 
         elif choice == "u":
             print(m.undo())
-            continue
-
-        elif choice == "r":
-            m.reload()
-            print("Data opnieuw geladen.")
+            m.save()
             continue
 
         elif choice == "k":
-            skipped_session.add(eci_name)
-            print("Overgeslagen voor deze sessie.")
+            # >>> NIEUW: zet deze naam in de sessie-skipset
+            skipped_session.add(odd)
+            print("Overgeslagen (alleen deze sessie). Volgende team.")
             continue
 
         elif choice == "s":
-            query = input("Zoekterm in API-teams: ").strip()
+            query = input("Zoekterm in ECI: ").strip()
             if not query:
                 continue
-
-            results = m.search_api(query, api_league_id)
-
+            results = m.search_eci(query)
             if not results:
                 print("Geen hits.")
                 continue
-
-            print("\nZoekresultaten (API):")
-            for i, (api_id, api_name, api_country, sc) in enumerate(results, 1):
-                print(f"  {i}. {api_name} [id={api_id}, country={api_country}]   [{score_str(sc)}]")
-
+            print("\nZoekresultaten:")
+            for i, (eci, sc) in enumerate(results, 1):
+                print(f"  {i}. {eci}   [{score_str(sc)}]")
             pick = input("Kies nummer (of Enter om te annuleren): ").strip()
-
             if pick.isdigit():
                 pi = int(pick)
                 if 1 <= pi <= len(results):
-                    api_id, api_name, api_country, _ = results[pi - 1]
-                    m.save_match(eci_name, api_id, api_name, api_country, api_league_id)
-                    print(f"✔ Gekoppeld: {eci_name} → {api_name}")
-                else:
-                    print("Ongeldig nummer.")
+                    eci_pick = results[pi-1][0]
+                    m.set_pair(odd, eci_pick)
+                    m.save()
+                    print(f"✔ Gekoppeld: {odd} → {eci_pick}")
             continue
 
         elif choice.isdigit():
             num = int(choice)
             if 1 <= num <= len(suggs):
-                api_id, api_name, api_country, _ = suggs[num - 1]
-                m.save_match(eci_name, api_id, api_name, api_country, api_league_id)
-                print(f"✔ Gekoppeld: {eci_name} → {api_name}")
+                eci_pick = suggs[num-1][0]
+                m.set_pair(odd, eci_pick)
+                m.save()
+                print(f"✔ Gekoppeld: {odd} → {eci_pick}")
             else:
                 print("Ongeldig nummer.")
             continue
@@ -376,5 +342,5 @@ def interactive_loop():
 
 
 if __name__ == "__main__":
-    print("ECI ↔ API-Football Team Matcher — starting…")
+    print("ECI ↔ Oddspedia Team Matcher — starting…")
     interactive_loop()

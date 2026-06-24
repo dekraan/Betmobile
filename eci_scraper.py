@@ -285,6 +285,15 @@ class ECIScraper:
                     home_team = re.sub(r'\([-]?\d+\)', '', home_team_full).strip()
                     home_rating = home_rating_match.group(1) if home_rating_match else 'N/A'
 
+                    # Bescherming tegen encoding-fouten zoals N?mme, BK H?cken, Brei?ablik.
+                    # Als Selenium een teamnaam met '?' teruggeeft, slaan we deze rij niet op.
+                    if "?" in home_team or "?" in away_team:
+                        logger.warning(
+                            f"Skipping suspicious encoding row in {competition_name}: "
+                            f"{date} | {home_team} - {away_team}"
+                        )
+                        continue
+                        
                     # Away team
                     away_team_full = match.find_element(
                         By.CSS_SELECTOR, 

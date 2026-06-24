@@ -1,0 +1,6 @@
+2026/06/22-09:42:53.017 4e7c Creating DB C:\Users\Gebruiker\Documents\Betmobile\chrome_manual\Default\WebStorage\6\IndexedDB\indexeddb.leveldb since it was missing.
+2026/06/22-09:42:53.022 4e7c Reusing MANIFEST C:\Users\Gebruiker\Documents\Betmobile\chrome_manual\Default\WebStorage\6\IndexedDB\indexeddb.leveldb/MANIFEST-000001
+2026/06/22-09:43:11.000 808 Level-0 table #5: started
+2026/06/22-09:43:11.001 808 Level-0 table #5: 10733 bytes OK
+2026/06/22-09:43:11.002 808 Delete type=0 #3
+2026/06/22-09:43:11.003 808 Manual compaction at level-0 from (begin) .. (end); will stop at (end)

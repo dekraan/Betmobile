@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="nl-NL" data-bs-theme="light">
+	<head>
+		
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+
+		
+
+		<link rel="manifest" href="https://www.euroclubindex.com/wp-json/happyhorizon/v1/manifest/">
+
+		<link rel="preload" href="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/fonts/overpass-v12-latin-200.woff2" as="font" type="font/woff2" crossorigin>
+		<link rel="preload" href="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/fonts/overpass-v12-latin-300.woff2" as="font" type="font/woff2" crossorigin>
+		<link rel="preload" href="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/fonts/overpass-v12-latin-regular.woff2" as="font" type="font/woff2" crossorigin>
+		<link rel="preload" href="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/fonts/overpass-v12-latin-600.woff2" as="font" type="font/woff2" crossorigin>
+		<link rel="preload" href="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/fonts/overpass-v12-latin-700.woff2" as="font" type="font/woff2" crossorigin>		
+		
+		<meta name='robots' content='index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' />
+
+	<!-- This site is optimized with the Yoast SEO plugin v22.3 - https://yoast.com/wordpress/plugins/seo/ -->
+	<title>Latest Ranking - Euro Club Index</title>
+	<link rel="canonical" href="https://www.euroclubindex.com/" />
+	<meta property="og:locale" content="nl_NL" />
+	<meta property="og:type" content="website" />
+	<meta property="og:title" content="Latest Ranking - Euro Club Index" />
+	<meta property="og:url" content="https://www.euroclubindex.com/" />
+	<meta property="og:site_name" content="Euro Club Index" />
+	<meta property="article:modified_time" content="2023-06-23T09:44:17+00:00" />
+	<meta name="twitter:card" content="summary_large_image" />
+	<script type="application/ld+json" class="yoast-schema-graph">{"@context":"https://schema.org","@graph":[{"@type":"WebPage","@id":"https://www.euroclubindex.com/","url":"https://www.euroclubindex.com/","name":"Latest Ranking - Euro Club Index","isPartOf":{"@id":"https://www.euroclubindex.com/#website"},"datePublished":"2023-06-08T08:02:36+00:00","dateModified":"2023-06-23T09:44:17+00:00","breadcrumb":{"@id":"https://www.euroclubindex.com/#breadcrumb"},"inLanguage":"nl-NL","potentialAction":[{"@type":"ReadAction","target":["https://www.euroclubindex.com/"]}]},{"@type":"BreadcrumbList","@id":"https://www.euroclubindex.com/#breadcrumb","itemListElement":[{"@type":"ListItem","position":1,"name":"Latest Ranking"}]},{"@type":"WebSite","@id":"https://www.euroclubindex.com/#website","url":"https://www.euroclubindex.com/","name":"Euro Club Index","description":"The Ultimate Club Football Ranking","alternateName":"The ultimate club football ranking","potentialAction":[{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://www.euroclubindex.com/?s={search_term_string}"},"query-input":"required name=search_term_string"}],"inLanguage":"nl-NL"}]}</script>
+	<!-- / Yoast SEO plugin. -->
+
+
+<script type="text/javascript">
+/* <![CDATA[ */
+window._wpemojiSettings = {"baseUrl":"https:\/\/s.w.org\/images\/core\/emoji\/14.0.0\/72x72\/","ext":".png","svgUrl":"https:\/\/s.w.org\/images\/core\/emoji\/14.0.0\/svg\/","svgExt":".svg","source":{"concatemoji":"https:\/\/www.euroclubindex.com\/wp-includes\/js\/wp-emoji-release.min.js?ver=6.4.3"}};
+/*! This file is auto-generated */
+!function(i,n){var o,s,e;function c(e){try{var t={supportTests:e,timestamp:(new Date).valueOf()};sessionStorage.setItem(o,JSON.stringify(t))}catch(e){}}function p(e,t,n){e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(t,0,0);var t=new Uint32Array(e.getImageData(0,0,e.canvas.width,e.canvas.height).data),r=(e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(n,0,0),new Uint32Array(e.getImageData(0,0,e.canvas.width,e.canvas.height).data));return t.every(function(e,t){return e===r[t]})}function u(e,t,n){switch(t){case"flag":return n(e,"\ud83c\udff3\ufe0f\u200d\u26a7\ufe0f","\ud83c\udff3\ufe0f\u200b\u26a7\ufe0f")?!1:!n(e,"\ud83c\uddfa\ud83c\uddf3","\ud83c\uddfa\u200b\ud83c\uddf3")&&!n(e,"\ud83c\udff4\udb40\udc67\udb40\udc62\udb40\udc65\udb40\udc6e\udb40\udc67\udb40\udc7f","\ud83c\udff4\u200b\udb40\udc67\u200b\udb40\udc62\u200b\udb40\udc65\u200b\udb40\udc6e\u200b\udb40\udc67\u200b\udb40\udc7f");case"emoji":return!n(e,"\ud83e\udef1\ud83c\udffb\u200d\ud83e\udef2\ud83c\udfff","\ud83e\udef1\ud83c\udffb\u200b\ud83e\udef2\ud83c\udfff")}return!1}function f(e,t,n){var r="undefined"!=typeof WorkerGlobalScope&&self instanceof WorkerGlobalScope?new OffscreenCanvas(300,150):i.createElement("canvas"),a=r.getContext("2d",{willReadFrequently:!0}),o=(a.textBaseline="top",a.font="600 32px Arial",{});return e.forEach(function(e){o[e]=t(a,e,n)}),o}function t(e){var t=i.createElement("script");t.src=e,t.defer=!0,i.head.appendChild(t)}"undefined"!=typeof Promise&&(o="wpEmojiSettingsSupports",s=["flag","emoji"],n.supports={everything:!0,everythingExceptFlag:!0},e=new Promise(function(e){i.addEventListener("DOMContentLoaded",e,{once:!0})}),new Promise(function(t){var n=function(){try{var e=JSON.parse(sessionStorage.getItem(o));if("object"==typeof e&&"number"==typeof e.timestamp&&(new Date).valueOf()<e.timestamp+604800&&"object"==typeof e.supportTests)return e.supportTests}catch(e){}return null}();if(!n){if("undefined"!=typeof Worker&&"undefined"!=typeof OffscreenCanvas&&"undefined"!=typeof URL&&URL.createObjectURL&&"undefined"!=typeof Blob)try{var e="postMessage("+f.toString()+"("+[JSON.stringify(s),u.toString(),p.toString()].join(",")+"));",r=new Blob([e],{type:"text/javascript"}),a=new Worker(URL.createObjectURL(r),{name:"wpTestEmojiSupports"});return void(a.onmessage=function(e){c(n=e.data),a.terminate(),t(n)})}catch(e){}c(n=f(s,u,p))}t(n)}).then(function(e){for(var t in e)n.supports[t]=e[t],n.supports.everything=n.supports.everything&&n.supports[t],"flag"!==t&&(n.supports.everythingExceptFlag=n.supports.everythingExceptFlag&&n.supports[t]);n.supports.everythingExceptFlag=n.supports.everythingExceptFlag&&!n.supports.flag,n.DOMReady=!1,n.readyCallback=function(){n.DOMReady=!0}}).then(function(){return e}).then(function(){var e;n.supports.everything||(n.readyCallback(),(e=n.source||{}).concatemoji?t(e.concatemoji):e.wpemoji&&e.twemoji&&(t(e.twemoji),t(e.wpemoji)))}))}((window,document),window._wpemojiSettings);
+/* ]]> */
+</script>
+<style id='wp-emoji-styles-inline-css' type='text/css'>
+
+	img.wp-smiley, img.emoji {
+		display: inline !important;
+		border: none !important;
+		box-shadow: none !important;
+		height: 1em !important;
+		width: 1em !important;
+		margin: 0 0.07em !important;
+		vertical-align: -0.1em !important;
+		background: none !important;
+		padding: 0 !important;
+	}
+</style>
+<style id='global-styles-inline-css' type='text/css'>
+body{--wp--preset--color--black: #000000;--wp--preset--color--cyan-bluish-gray: #abb8c3;--wp--preset--color--white: #ffffff;--wp--preset--color--pale-pink: #f78da7;--wp--preset--color--vivid-red: #cf2e2e;--wp--preset--color--luminous-vivid-orange: #ff6900;--wp--preset--color--luminous-vivid-amber: #fcb900;--wp--preset--color--light-green-cyan: #7bdcb5;--wp--preset--color--vivid-green-cyan: #00d084;--wp--preset--color--pale-cyan-blue: #8ed1fc;--wp--preset--color--vivid-cyan-blue: #0693e3;--wp--preset--color--vivid-purple: #9b51e0;--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple: linear-gradient(135deg,rgba(6,147,227,1) 0%,rgb(155,81,224) 100%);--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan: linear-gradient(135deg,rgb(122,220,180) 0%,rgb(0,208,130) 100%);--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange: linear-gradient(135deg,rgba(252,185,0,1) 0%,rgba(255,105,0,1) 100%);--wp--preset--gradient--luminous-vivid-orange-to-vivid-red: linear-gradient(135deg,rgba(255,105,0,1) 0%,rgb(207,46,46) 100%);--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray: linear-gradient(135deg,rgb(238,238,238) 0%,rgb(169,184,195) 100%);--wp--preset--gradient--cool-to-warm-spectrum: linear-gradient(135deg,rgb(74,234,220) 0%,rgb(151,120,209) 20%,rgb(207,42,186) 40%,rgb(238,44,130) 60%,rgb(251,105,98) 80%,rgb(254,248,76) 100%);--wp--preset--gradient--blush-light-purple: linear-gradient(135deg,rgb(255,206,236) 0%,rgb(152,150,240) 100%);--wp--preset--gradient--blush-bordeaux: linear-gradient(135deg,rgb(254,205,165) 0%,rgb(254,45,45) 50%,rgb(107,0,62) 100%);--wp--preset--gradient--luminous-dusk: linear-gradient(135deg,rgb(255,203,112) 0%,rgb(199,81,192) 50%,rgb(65,88,208) 100%);--wp--preset--gradient--pale-ocean: linear-gradient(135deg,rgb(255,245,203) 0%,rgb(182,227,212) 50%,rgb(51,167,181) 100%);--wp--preset--gradient--electric-grass: linear-gradient(135deg,rgb(202,248,128) 0%,rgb(113,206,126) 100%);--wp--preset--gradient--midnight: linear-gradient(135deg,rgb(2,3,129) 0%,rgb(40,116,252) 100%);--wp--preset--font-size--small: 13px;--wp--preset--font-size--medium: 20px;--wp--preset--font-size--large: 36px;--wp--preset--font-size--x-large: 42px;--wp--preset--spacing--20: 0.44rem;--wp--preset--spacing--30: 0.67rem;--wp--preset--spacing--40: 1rem;--wp--preset--spacing--50: 1.5rem;--wp--preset--spacing--60: 2.25rem;--wp--preset--spacing--70: 3.38rem;--wp--preset--spacing--80: 5.06rem;--wp--preset--shadow--natural: 6px 6px 9px rgba(0, 0, 0, 0.2);--wp--preset--shadow--deep: 12px 12px 50px rgba(0, 0, 0, 0.4);--wp--preset--shadow--sharp: 6px 6px 0px rgba(0, 0, 0, 0.2);--wp--preset--shadow--outlined: 6px 6px 0px -3px rgba(255, 255, 255, 1), 6px 6px rgba(0, 0, 0, 1);--wp--preset--shadow--crisp: 6px 6px 0px rgba(0, 0, 0, 1);}:where(.is-layout-flex){gap: 0.5em;}:where(.is-layout-grid){gap: 0.5em;}body .is-layout-flow > .alignleft{float: left;margin-inline-start: 0;margin-inline-end: 2em;}body .is-layout-flow > .alignright{float: right;margin-inline-start: 2em;margin-inline-end: 0;}body .is-layout-flow > .aligncenter{margin-left: auto !important;margin-right: auto !important;}body .is-layout-constrained > .alignleft{float: left;margin-inline-start: 0;margin-inline-end: 2em;}body .is-layout-constrained > .alignright{float: right;margin-inline-start: 2em;margin-inline-end: 0;}body .is-layout-constrained > .aligncenter{margin-left: auto !important;margin-right: auto !important;}body .is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)){max-width: var(--wp--style--global--content-size);margin-left: auto !important;margin-right: auto !important;}body .is-layout-constrained > .alignwide{max-width: var(--wp--style--global--wide-size);}body .is-layout-flex{display: flex;}body .is-layout-flex{flex-wrap: wrap;align-items: center;}body .is-layout-flex > *{margin: 0;}body .is-layout-grid{display: grid;}body .is-layout-grid > *{margin: 0;}:where(.wp-block-columns.is-layout-flex){gap: 2em;}:where(.wp-block-columns.is-layout-grid){gap: 2em;}:where(.wp-block-post-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-post-template.is-layout-grid){gap: 1.25em;}.has-black-color{color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-color{color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-color{color: var(--wp--preset--color--white) !important;}.has-pale-pink-color{color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-color{color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-color{color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-color{color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-color{color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-color{color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-color{color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-color{color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-color{color: var(--wp--preset--color--vivid-purple) !important;}.has-black-background-color{background-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-background-color{background-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-background-color{background-color: var(--wp--preset--color--white) !important;}.has-pale-pink-background-color{background-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-background-color{background-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-background-color{background-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-background-color{background-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-background-color{background-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-background-color{background-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-background-color{background-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-background-color{background-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-background-color{background-color: var(--wp--preset--color--vivid-purple) !important;}.has-black-border-color{border-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-border-color{border-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-border-color{border-color: var(--wp--preset--color--white) !important;}.has-pale-pink-border-color{border-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-border-color{border-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-border-color{border-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-border-color{border-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-border-color{border-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-border-color{border-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-border-color{border-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-border-color{border-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-border-color{border-color: var(--wp--preset--color--vivid-purple) !important;}.has-vivid-cyan-blue-to-vivid-purple-gradient-background{background: var(--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple) !important;}.has-light-green-cyan-to-vivid-green-cyan-gradient-background{background: var(--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan) !important;}.has-luminous-vivid-amber-to-luminous-vivid-orange-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange) !important;}.has-luminous-vivid-orange-to-vivid-red-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-orange-to-vivid-red) !important;}.has-very-light-gray-to-cyan-bluish-gray-gradient-background{background: var(--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray) !important;}.has-cool-to-warm-spectrum-gradient-background{background: var(--wp--preset--gradient--cool-to-warm-spectrum) !important;}.has-blush-light-purple-gradient-background{background: var(--wp--preset--gradient--blush-light-purple) !important;}.has-blush-bordeaux-gradient-background{background: var(--wp--preset--gradient--blush-bordeaux) !important;}.has-luminous-dusk-gradient-background{background: var(--wp--preset--gradient--luminous-dusk) !important;}.has-pale-ocean-gradient-background{background: var(--wp--preset--gradient--pale-ocean) !important;}.has-electric-grass-gradient-background{background: var(--wp--preset--gradient--electric-grass) !important;}.has-midnight-gradient-background{background: var(--wp--preset--gradient--midnight) !important;}.has-small-font-size{font-size: var(--wp--preset--font-size--small) !important;}.has-medium-font-size{font-size: var(--wp--preset--font-size--medium) !important;}.has-large-font-size{font-size: var(--wp--preset--font-size--large) !important;}.has-x-large-font-size{font-size: var(--wp--preset--font-size--x-large) !important;}
+.wp-block-navigation a:where(:not(.wp-element-button)){color: inherit;}
+:where(.wp-block-post-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-post-template.is-layout-grid){gap: 1.25em;}
+:where(.wp-block-columns.is-layout-flex){gap: 2em;}:where(.wp-block-columns.is-layout-grid){gap: 2em;}
+.wp-block-pullquote{font-size: 1.5em;line-height: 1.6;}
+</style>
+<link rel='stylesheet' id='theme-bootstrap-css' href='https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/css/libs/bootstrap/dist/css/bootstrap.min.css?ver=1773065022' type='text/css' media='all' />
+<link rel='stylesheet' id='theme-swiper-css' href='https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/css/libs/swiper-bundle.min.css?ver=9.1.1' type='text/css' media='all' />
+<link rel='stylesheet' id='theme-main-css' href='https://www.euroclubindex.com/wp-content/themes/happyhorizon/dist/happyhorizon-main-ef91894e8a931125fcd1.min.css' type='text/css' media='all' />
+<link rel='stylesheet' id='module-latest-ranking-css' href='https://www.euroclubindex.com/wp-content/themes/happyhorizon/dist/happyhorizon-module-latest-ranking-8c4352400b90007c8058.min.css' type='text/css' media='all' />
+<script type="text/javascript" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/js/bootstrap-color-mode.js?ver=1773065022" id="theme-bootstrap-color-mode-js"></script>
+<script type="text/javascript" src="https://www.euroclubindex.com/wp-includes/js/jquery/jquery.min.js?ver=3.7.1" id="jquery-core-js"></script>
+<script type="text/javascript" src="https://www.euroclubindex.com/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1" id="jquery-migrate-js"></script>
+<link rel="https://api.w.org/" href="https://www.euroclubindex.com/wp-json/" /><link rel="alternate" type="application/json" href="https://www.euroclubindex.com/wp-json/wp/v2/pages/108" /><link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://www.euroclubindex.com/xmlrpc.php?rsd" />
+<link rel='shortlink' href='https://www.euroclubindex.com/' />
+<link rel="alternate" type="application/json+oembed" href="https://www.euroclubindex.com/wp-json/oembed/1.0/embed?url=https%3A%2F%2Fwww.euroclubindex.com%2F" />
+<link rel="alternate" type="text/xml+oembed" href="https://www.euroclubindex.com/wp-json/oembed/1.0/embed?url=https%3A%2F%2Fwww.euroclubindex.com%2F&#038;format=xml" />
+<link rel="icon" href="https://www.euroclubindex.com/wp-content/uploads/2023/06/cropped-icon-euroclubindex-32x32.png" sizes="32x32" />
+<link rel="icon" href="https://www.euroclubindex.com/wp-content/uploads/2023/06/cropped-icon-euroclubindex-192x192.png" sizes="192x192" />
+<link rel="apple-touch-icon" href="https://www.euroclubindex.com/wp-content/uploads/2023/06/cropped-icon-euroclubindex-180x180.png" />
+<meta name="msapplication-TileImage" content="https://www.euroclubindex.com/wp-content/uploads/2023/06/cropped-icon-euroclubindex-270x270.png" />
+			</head>
+	<body class="home page-template-default page page-id-108"> 
+		
+		
+		
+		<header class="header fixed-top">
+			<div class="container-fluid">
+				<div class="row">
+					<div class="col-auto">
+												<a href="https://www.euroclubindex.com/" title="To home" class="d-block header__logo">
+							<img width="574" height="162" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex-574x162.png" class="object-fit-contain header__logo-img" alt="" loading="eager" decoding="async" fetchpriority="high" srcset="https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex-574x162.png 574w, https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex-300x85.png 300w, https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex-768x216.png 768w, https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex.png 994w" sizes="(max-width: 574px) 100vw, 574px" />							<img width="574" height="162" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex_diap-574x162.png" class="object-fit-contain header__logo-img header__logo-img--diap" alt="" loading="eager" decoding="async" srcset="https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex_diap-574x162.png 574w, https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex_diap-300x85.png 300w, https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex_diap-768x216.png 768w, https://www.euroclubindex.com/wp-content/uploads/2023/06/logo-euroclubindex_diap.png 994w" sizes="(max-width: 574px) 100vw, 574px" />						</a>					
+					</div>
+					<div class="col align-self-center">
+						<div class="row justify-content-end align-items-center">
+							<div class="col-auto pe-4 d-none d-md-block">
+																	<div class="row align-items-center">
+																					<div class="col-auto">
+												<a href="http://www.gracenote.com/" rel="noopener" target="_blank" title="Gracenote">
+													<img width="574" height="167" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-574x167.png" class="img-fluid header__logos-logo" alt="" loading="eager" decoding="async" srcset="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-574x167.png 574w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-300x87.png 300w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-1024x298.png 1024w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-768x223.png 768w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-1536x446.png 1536w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50.png 1600w" sizes="(max-width: 574px) 100vw, 574px" />												</a>
+											</div>
+																					<div class="col-auto">
+												<a href="http://www.hypercube.nl/" rel="noopener" target="_blank" title="Hypercube">
+													<img width="574" height="130" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-574x130.png" class="img-fluid header__logos-logo" alt="" loading="eager" decoding="async" srcset="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-574x130.png 574w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-300x68.png 300w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53.png 761w" sizes="(max-width: 574px) 100vw, 574px" />												</a>
+											</div>
+																			</div>
+															</div>
+							<div class="col-auto">
+																<a href="#" class="header__color-mode-switch" data-bs-theme-value="dark" title="Change color mode (dark)">
+									<img src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/img/diap-switch-day.png" alt="">
+								</a>
+								<a href="#" class="header__color-mode-switch header__color-mode-switch--diap" data-bs-theme-value="light" title="Change color mode (light)">
+									<img src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/img/diap-switch-night.png" alt="">
+								</a>
+							</div>
+							<div class="col-auto d-md-none ps-1">
+																<a href="#" class="header__menu-switch" title="Menu">
+									<img src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/img/open-menu.png" alt="">
+								</a>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="container-fluid d-none">
+				<div class="row align-items-center">
+					<div class="col-auto py-2">
+												<a href="https://www.euroclubindex.com/" title="To home" class="d-block">
+							<svg class="header__logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 395.81 508"><path d="m374.24,376.31c0,72.73-58.96,131.69-131.69,131.69s-131.69-58.96-131.69-131.69,58.96-131.69,131.69-131.69,131.69,58.96,131.69,131.69Z"/><path d="m395.81,222.63L4.58,277.61,0,245.01l391.22-54.98,4.58,32.6Z"/><path d="m158.04,221.91c-23.86,0-47.64-5.23-69.91-15.64C48.11,187.57,17.77,154.41,2.69,112.88l104.6-37.98c10.18,28.04,41.27,42.57,69.31,32.39,28.04-10.18,42.57-41.28,32.38-69.31L313.58,0c15.08,41.52,13.08,86.43-5.62,126.45-18.7,40.02-51.86,70.36-93.38,85.44-18.42,6.69-37.51,10.02-56.54,10.02Z"/></svg>
+						</a>
+					</div>
+					<div class="col">
+						<div class="row align-items-center justify-content-end">
+							<div class="col-auto">
+																<nav>...</nav>
+							</div>
+							<!--<div class="col-auto">
+																<form role="search" method="get" action="https://www.euroclubindex.com/">
+									<div class="row align-items-center">
+										<div class="col-auto">
+											<div class="form-floating">
+												<input type="search" ref="search" name="s" id="floating-search-input" class="form-control" placeholder="Search">
+												<label for="floating-search-input">Search</label>
+											</div>
+										</div>
+										<div class="col-auto">
+											<button type="submit" class="btn">Search</button>
+										</div>
+									</div>
+								</form>
+							</div>-->
+																						<div class="col-auto">
+									<ul>
+										<li class="d-inline">
+											<a href="#" class="d-inline-block p-1" data-bs-theme-value="light" title="Change color mode (light)">
+												<svg class="base-icon base-icon--large" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Pro 6.2.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2022 Fonticons, Inc. --><path d="M361.5 1.2c5 2.1 8.6 6.6 9.6 11.9L391 121l107.9 19.8c5.3 1 9.8 4.6 11.9 9.6s1.5 10.7-1.6 15.2L446.9 256l62.3 90.3c3.1 4.5 3.7 10.2 1.6 15.2s-6.6 8.6-11.9 9.6L391 391 371.1 498.9c-1 5.3-4.6 9.8-9.6 11.9s-10.7 1.5-15.2-1.6L256 446.9l-90.3 62.3c-4.5 3.1-10.2 3.7-15.2 1.6s-8.6-6.6-9.6-11.9L121 391 13.1 371.1c-5.3-1-9.8-4.6-11.9-9.6s-1.5-10.7 1.6-15.2L65.1 256 2.8 165.7c-3.1-4.5-3.7-10.2-1.6-15.2s6.6-8.6 11.9-9.6L121 121 140.9 13.1c1-5.3 4.6-9.8 9.6-11.9s10.7-1.5 15.2 1.6L256 65.1 346.3 2.8c4.5-3.1 10.2-3.7 15.2-1.6zM352 256c0 53-43 96-96 96s-96-43-96-96s43-96 96-96s96 43 96 96zm32 0c0-70.7-57.3-128-128-128s-128 57.3-128 128s57.3 128 128 128s128-57.3 128-128z"/></svg>
+											</a>
+										</li>
+										<li class="d-inline">
+											<a href="#" class="d-inline-block p-1" data-bs-theme-value="dark" title="Change color mode (dark)">
+												<svg class="base-icon base-icon--large" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Pro 6.2.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2022 Fonticons, Inc. --><path d="M223.5 32C100 32 0 132.3 0 256S100 480 223.5 480c60.6 0 115.5-24.2 155.8-63.4c5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-9.8 1.7-19.8 2.6-30.1 2.6c-96.9 0-175.5-78.8-175.5-176c0-65.8 36-123.1 89.3-153.3c6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-6.3-.5-12.6-.8-19-.8z"/></svg>
+											</a>
+										</li>
+										<li class="d-inline">
+											<a href="#" class="d-inline-block p-1" data-bs-theme-value="auto" title="Change color mode (auto)">
+												<svg class="base-icon base-icon--large" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Pro 6.2.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2022 Fonticons, Inc. --><path d="M448 256c0-106-86-192-192-192V448c106 0 192-86 192-192zm64 0c0 141.4-114.6 256-256 256S0 397.4 0 256S114.6 0 256 0S512 114.6 512 256z"/></svg>
+											</a>
+										</li>
+									</ul>
+								</div>
+													</div>
+					</div>
+				</div>
+			</div>
+		</header>
+
+		<header class="main-navigation fixed-top d-md-none">
+			<a class="main-navigation__close-menu" href="#">
+				<svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 384 512"><!--! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M324.5 411.1c6.2 6.2 16.4 6.2 22.6 0s6.2-16.4 0-22.6L214.6 256 347.1 123.5c6.2-6.2 6.2-16.4 0-22.6s-16.4-6.2-22.6 0L192 233.4 59.5 100.9c-6.2-6.2-16.4-6.2-22.6 0s-6.2 16.4 0 22.6L169.4 256 36.9 388.5c-6.2 6.2-6.2 16.4 0 22.6s16.4 6.2 22.6 0L192 278.6 324.5 411.1z"/></svg>
+			</a>
+			<div class="main-navigation__inner-content">
+								<a href="https://www.euroclubindex.com">
+					<img class="main-navigation__image img-fluid" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/icon-euroclubindex-300x300.png" alt="Euro Club Index Shield" title="Home">
+				</a>
+				<nav>
+					<div class="menu-main-menu-container"><ul id="menu-main-menu" class="menu"><li id="menu-item-1721" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-home current-menu-item page_item page-item-108 current_page_item menu-item-1721"><a href="https://www.euroclubindex.com/" aria-current="page">Ranking</a></li>
+<li id="menu-item-1722" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1722"><a href="https://www.euroclubindex.com/match-odds/">Match Odds</a></li>
+<li id="menu-item-1723" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1723"><a href="https://www.euroclubindex.com/league-odds/">League Odds</a></li>
+<li id="menu-item-1724" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1724"><a href="https://www.euroclubindex.com/teams-comparison/">Teams Comparison</a></li>
+<li id="menu-item-1725" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1725"><a href="https://www.euroclubindex.com/methodology/">Methodology</a></li>
+</ul></div>				</nav>
+															<a href="http://www.gracenote.com/" rel="noopener" target="_blank" title="Gracenote">
+							<img width="574" height="167" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-574x167.png" class="img-fluid main-navigation__logos-logo" alt="" loading="eager" decoding="async" srcset="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-574x167.png 574w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-300x87.png 300w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-1024x298.png 1024w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-768x223.png 768w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-1536x446.png 1536w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50.png 1600w" sizes="(max-width: 574px) 100vw, 574px" />						</a>
+											<a href="http://www.hypercube.nl/" rel="noopener" target="_blank" title="Hypercube">
+							<img width="574" height="130" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-574x130.png" class="img-fluid main-navigation__logos-logo" alt="" loading="eager" decoding="async" srcset="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-574x130.png 574w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-300x68.png 300w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53.png 761w" sizes="(max-width: 574px) 100vw, 574px" />						</a>
+												</div>
+			<div class="main-navigation__footer">
+							</div>
+		</header>
+
+		<header class="main-parallax">
+						<div class="main-parallax__image" style="background-image: url(https://www.euroclubindex.com/wp-content/uploads/2023/06/eci-parallax.jpg);"></div>
+		</header>
+
+		<header class="desktop-navigation d-none d-md-block clearfix">
+			<nav>
+				<div class="menu-main-menu-container"><ul id="menu-main-menu-1" class="menu"><li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-home current-menu-item page_item page-item-108 current_page_item menu-item-1721"><a href="https://www.euroclubindex.com/" aria-current="page">Ranking</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1722"><a href="https://www.euroclubindex.com/match-odds/">Match Odds</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1723"><a href="https://www.euroclubindex.com/league-odds/">League Odds</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1724"><a href="https://www.euroclubindex.com/teams-comparison/">Teams Comparison</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1725"><a href="https://www.euroclubindex.com/methodology/">Methodology</a></li>
+</ul></div>			</nav>
+		</header>
+
+		<main>						
+<section 
+	id="app-module-latest-ranking" 
+	class="module-latest-ranking"
+	 
+	data-rest-route="https://www.euroclubindex.com/wp-json/happyhorizon/v1/get-module-latest-ranking/" 
+	data-items-per-page="-1" 
+	data-limit="10"
+	v-cloak
+>
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-12">
+				<div class="row">
+					<div class="col-lg-7 col-xxl-8">
+						<div class="wysiwyg">
+							<h1 class="text-uppercase">Latest Ranking</h1>
+						</div>
+					</div>
+					<div class="col">
+						<div class="form-floating mb-3">
+							<input id="search-query" class="form-control" type="text" v-model="searchQuery" placeholder="Search club or country...">
+							<label for="search-query">Search club or country...</label>
+						</div>
+					</div>
+				</div>
+				<div class="row align-items-center">
+					<div class="col-auto pe-0 mb-2 text-center module-latest-ranking__heading-rank">
+						<img decoding="async" class="img-fluid module-latest-ranking__heading-icon" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/img/rank-icon.png">
+					</div>
+					<div class="col-auto p-0 mb-2 text-center module-latest-ranking__heading-rank-difference">
+						<img decoding="async" class="img-fluid module-latest-ranking__heading-icon" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/img/rank-diff-icon.png">
+					</div>
+					<div class="col-auto p-0 mb-2 module-latest-ranking__heading-team-info">
+						<img decoding="async" class="img-fluid module-latest-ranking__heading-icon" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/img/team-icon.png">
+					</div>
+					<div class="col-auto ps-0 p-sm-0 mb-2 module-latest-ranking__heading-points">
+						<img decoding="async" class="img-fluid module-latest-ranking__heading-icon" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/img/points-icon.png">
+					</div>
+					<!-- <div class="col ps-0 mb-2 d-none d-sm-block module-latest-ranking__heading-compare">
+						<div class="d-flex justify-content-end">
+							<img decoding="async" class="img-fluid module-latest-ranking__heading-icon" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/img/compare-icon.png">
+						</div>
+					</div> -->
+				</div>
+				<div v-if="items !== null">
+					<a v-for="(itemdata, index) in items.slice(0, limit)" :href="itemdata.permalink" class="module-latest-ranking__item d-block">
+						<div class="row align-items-center">
+							<div class="col-auto pe-0 text-center module-latest-ranking__item-rank">
+								<span v-html="itemdata.rankData.Rank"></span>
+							</div>
+							<div class="col-auto p-0 text-center module-latest-ranking__item-rank-difference">
+								<span v-if="itemdata.rankData.RankDifference == 0">-</span>
+								<span v-if="itemdata.rankData.RankDifference > 0">{{itemdata.rankData.RankDifference}} <svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 320 512" class="green-fill-color"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M182.6 137.4c-12.5-12.5-32.8-12.5-45.3 0l-128 128c-9.2 9.2-11.9 22.9-6.9 34.9s16.6 19.8 29.6 19.8H288c12.9 0 24.6-7.8 29.6-19.8s2.2-25.7-6.9-34.9l-128-128z"/></svg></span>
+								<span v-if="itemdata.rankData.RankDifference < 0">{{itemdata.rankData.RankDifference}} <svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 320 512" class="red-fill-color"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M137.4 374.6c12.5 12.5 32.8 12.5 45.3 0l128-128c9.2-9.2 11.9-22.9 6.9-34.9s-16.6-19.8-29.6-19.8L32 192c-12.9 0-24.6 7.8-29.6 19.8s-2.2 25.7 6.9 34.9l128 128z"/></svg></span>
+							</div>
+							<div class="col-auto p-0 module-latest-ranking__item-team-info">
+								<div class="d-flex p-0 align-items-center">
+									<img class="img-fluid" :src="'https://www.euroclubindex.com/eci-images/large/teams/'+itemdata.rankData.teamID+'.png'" :alt="itemdata.title">	
+									<div>
+										{{itemdata.title}} <span>({{itemdata.rankData.teamNation}})</span> 
+									</div>
+								</div>
+							</div>
+							<div class="col-auto p-0 module-latest-ranking__item-points">
+								<div>
+									{{Math.round(itemdata.rankData.Points)}}
+
+									<span v-if="itemdata.rankData.PointsDifference == 0">
+										(0)
+									</span>
+
+									<span class="green-color" v-if="itemdata.rankData.PointsDifference > 0">
+										(+{{itemdata.rankData.PointsDifference}})
+									</span>
+
+									<span class="red-color" v-if="itemdata.rankData.PointsDifference < 0">
+										({{itemdata.rankData.PointsDifference}})
+									</span>
+								</div>
+							</div>
+							<!-- <div class="col ps-0 module-latest-ranking__item-compare d-none d-sm-block">
+								<div class="d-flex justify-content-end">
+									<div>
+										<div @click.prevent="compareTeam('https://www.euroclubindex.com/teams-comparison/?team_id='+itemdata.id)" class="module-latest-ranking__item-compare-icon"></div>
+									</div>
+								</div>
+							</div> -->
+						</div>
+						<div class="module-latest-ranking__item-link">
+							<svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 448 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z"/></svg>
+						</div>
+					</a>
+				</div>
+				<div class="row mt-3" v-if="items !== null">
+					<div class="col-12">
+						<div v-if="itemsLoading">
+							<div class="text-center">
+								Loading...							</div>
+						</div>
+					</div>
+				</div>
+				<div class="row mt-3" v-if="items !== null">
+					<div class="col-lg-6 offset-lg-6 col-xl-4 offset-xl-8">
+						<div v-if="itemsTotalCount > items.length && itemsLoading === false">
+							<div class="text-center">
+								<a href="#" @click.prevent="limit = limit + 10" class="btn btn--db">
+									Load more (10 of {{ items.length }})
+								</a>
+
+								<a href="https://www.euroclubindex.com/?all-items=1" class="btn btn--db btn--black">
+									Load complete list ({{ items.length }})
+								</a>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="row mt-3" v-if="items !== null">
+					<div class="col-12">
+						<div v-if="itemsTotalCount === 0 && itemsLoading === false">
+							<div class="text-center">
+								<h4>Nothing found</h4>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+					</div>
+	</div>
+</section>						
+		</main>
+		
+		<footer class="footer">
+			<div class="container-fluid">
+				<div class="row">
+					<div class="col-lg-3 align-self-center footer__socials">
+											</div>
+					<div class="col-lg-4 align-self-center footer__service-menu">
+						<div class="menu-footer-menu-container"><ul id="menu-footer-menu" class="menu"><li id="menu-item-1728" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1728"><a href="https://www.euroclubindex.com/disclaimer/">Disclaimer</a></li>
+<li id="menu-item-1727" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1727"><a href="https://www.euroclubindex.com/contact/">Contact</a></li>
+<li id="menu-item-1726" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-home current-menu-item page_item page-item-108 current_page_item menu-item-1726"><a href="https://www.euroclubindex.com/" aria-current="page">Home</a></li>
+</ul></div>					</div>
+					<div class="col-lg-5 footer__logos d-none">
+													<ul>
+																	<li>
+																				<a href="http://www.gracenote.com/" rel="noopener" target="_blank" title="Gracenote">
+											<img width="574" height="167" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-574x167.png" class="img-fluid" alt="" loading="lazy" decoding="async" srcset="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-574x167.png 574w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-300x87.png 300w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-1024x298.png 1024w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-768x223.png 768w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50-1536x446.png 1536w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-50.png 1600w" sizes="(max-width: 574px) 100vw, 574px" />										</a>
+									</li>
+																	<li>
+																				<a href="http://www.hypercube.nl/" rel="noopener" target="_blank" title="Hypercube">
+											<img width="574" height="130" src="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-574x130.png" class="img-fluid" alt="" loading="lazy" decoding="async" srcset="https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-574x130.png 574w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53-300x68.png 300w, https://www.euroclubindex.com/wp-content/uploads/2023/06/image-53.png 761w" sizes="(max-width: 574px) 100vw, 574px" />										</a>
+									</li>
+															</ul>
+											</div>
+				</div>
+			</div>
+
+		</footer>
+
+
+		<a href="#top">
+			<div class="back-to-top">
+				<svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512"><!--! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M239 111c9.4-9.4 24.6-9.4 33.9 0L465 303c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0l-175-175L81 337c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9L239 111z"/></svg>
+			</div>
+		</a>
+		
+		<script type="text/javascript" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/js/main.js?ver=1773065022" id="theme-main-js"></script>
+<script type="text/javascript" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/js/libs/vue.global.prod.min.js?ver=3.2.47" id="theme-vue-js"></script>
+<script type="text/javascript" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/assets/js/libs/lodash.min.js?ver=4.17.21" id="theme-lodash-js"></script>
+<script type="text/javascript" src="https://www.euroclubindex.com/wp-content/themes/happyhorizon/modules/module-latest-ranking/module-latest-ranking.js?ver=1773065022" id="latest-ranking-js"></script>
+				
+	</body>
+</html>
+<!-- *´¨)
+     ¸.•´¸.•*´¨) ¸.•*¨)
+     (¸.•´ (¸.•` ¤ Comet Cache is Fully Functional ¤ ´¨) -->
+
+<!-- Cache File Version Salt:       n/a -->
+
+<!-- Cache File URL:                https://www.euroclubindex.com/ -->
+<!-- Cache File Path:               /cache/comet-cache/cache/https/www-euroclubindex-com/index.html -->
+
+<!-- Cache File Generated Via:      HTTP request -->
+<!-- Cache File Generated On:       Jun 18th, 2026 @ 3:12 pm UTC -->
+<!-- Cache File Generated In:       0.20847 seconds -->
+
+<!-- Cache File Expires On:         Jun 25th, 2026 @ 3:12 pm UTC -->
+<!-- Cache File Auto-Rebuild On:    Jun 25th, 2026 @ 3:12 pm UTC -->
+
+<!-- Loaded via Cache On:    Jun 22nd, 2026 @ 7:42 am UTC -->
+<!-- Loaded via Cache In:    0.00104 seconds -->

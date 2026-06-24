@@ -1,0 +1,8 @@
+2026/06/22-09:57:15.921 22f4 Reusing MANIFEST C:\Users\Gebruiker\Documents\Betmobile\chrome_manual\Default\Local Storage\leveldb/MANIFEST-000001
+2026/06/22-09:57:15.926 22f4 Recovering log #9
+2026/06/22-09:57:15.929 22f4 Reusing old log C:\Users\Gebruiker\Documents\Betmobile\chrome_manual\Default\Local Storage\leveldb/000009.log 
+2026/06/22-13:55:49.909 22f4 Level-0 table #13: started
+2026/06/22-13:55:49.915 22f4 Level-0 table #13: 114440 bytes OK
+2026/06/22-13:55:49.917 22f4 Delete type=0 #9
+2026/06/22-14:05:58.402 22f4 Level-0 table #15: started
+2026/06/22-14:05:58.407 22f4 Level-0 table #15: 75517 bytes OK
