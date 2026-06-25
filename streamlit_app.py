@@ -644,39 +644,49 @@ def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> 
         use_container_width=True,
     )
 
-    # === BAR CHART: dagelijkse profit ===
-    # Verwijder extreme uitschieters voor schaal (top/bottom 10%)
-    df_bar = df.copy()
-    p10 = df_bar["daily_profit"].quantile(0.10)
-    p90 = df_bar["daily_profit"].quantile(0.90)
-    df_bar = df_bar[df_bar["daily_profit"].between(p10 * 2, p90 * 2)]
-    abs_max = float(df_bar["daily_profit"].abs().max()) if not df_bar.empty else 5.0
-    marge = max(abs_max * 1.2, 2.0)
+# === BAR CHART: wekelijkse ROI ===
+    df_week = df.copy()
+    df_week["week"] = pd.to_datetime(df_week["settle_date"]).dt.to_period("W").apply(
+        lambda p: p.start_time
+    )
+    df_week = df_week.groupby("week").agg(
+        bets=("bets", "sum"),
+        weekly_profit=("daily_profit", "sum"),
+    ).reset_index()
+    df_week["roi_pct"] = (df_week["weekly_profit"] / df_week["bets"] * 100).round(1)
+    df_week["week"] = pd.to_datetime(df_week["week"])
 
-    bar_chart = alt.Chart(df_bar).mark_bar(
-        opacity=0.8,
-        cornerRadiusTopLeft=2,
-        cornerRadiusTopRight=2,
+    # Begrens y-as op basis van typische weken, niet de uitschieters
+    y_max = float(df_week["weekly_profit"].quantile(0.85)) * 1.5
+    y_min = float(df_week["weekly_profit"].quantile(0.15)) * 1.5
+    y_max = max(y_max, 3.0)
+    y_min = min(y_min, -3.0)
+
+    bar_chart = alt.Chart(df_week).mark_bar(
+        opacity=0.85,
+        cornerRadiusTopLeft=3,
+        cornerRadiusTopRight=3,
     ).encode(
         x=alt.X(
-            "settle_date:T",
-            title="Date",
+            "week:T",
+            title="Week",
             axis=alt.Axis(format="%d %b"),
         ),
         y=alt.Y(
-            "daily_profit:Q",
-            title="Daily profit",
-            scale=alt.Scale(domain=[-marge, marge]),
+            "weekly_profit:Q",
+            title="Weekly profit (units)",
+            scale=alt.Scale(domain=[y_min, y_max], clamp=True),
         ),
         color=alt.condition(
-            alt.datum.daily_profit >= 0,
+            alt.datum.weekly_profit >= 0,
             alt.value("#22c55e"),
             alt.value("#ef4444"),
         ),
         tooltip=[
-            alt.Tooltip("settle_date:T", title="Date", format="%d %b %Y"),
-            alt.Tooltip("bets:Q", title="Bets settled"),
-            alt.Tooltip("daily_profit:Q", title="Daily profit", format="+.2f"),
+            alt.Tooltip("week:T", title="Week of", format="%d %b %Y"),
+            alt.Tooltip("bets:Q", title="Bets"),
+            alt.Tooltip("weekly_profit:Q", title="Profit", format="+.2f"),
+            alt.Tooltip("roi_pct:Q", title="ROI %", format="+.1f"),
         ],
     )
 
@@ -686,7 +696,7 @@ def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> 
     ).encode(y="y:Q")
 
     st.altair_chart(
-        (bar_nullijn + bar_chart).properties(height=110),
+        (bar_nullijn + bar_chart).properties(height=130),
         use_container_width=True,
     )
 
