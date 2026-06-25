@@ -538,8 +538,8 @@ def render_pick_summary(row: pd.Series) -> None:
     if parts:
         st.markdown(" ".join(parts))
 
-def render_roi_chart(df: pd.DataFrame) -> None:
-    """Toont cumulatieve ROI grafiek over tijd."""
+def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> None:
+    """Toont cumulatieve ROI grafiek over tijd, met optionele A+ lijn."""
     if df.empty:
         st.info("No settled picks yet to display.")
         return
@@ -549,7 +549,7 @@ def render_roi_chart(df: pd.DataFrame) -> None:
     df = df.copy()
     df["settle_date"] = pd.to_datetime(df["settle_date"])
 
-    # Voeg een nulpunt toe aan het begin
+    # Nulpunt toevoegen
     start = pd.DataFrame([{
         "settle_date": df["settle_date"].min() - pd.Timedelta(days=1),
         "cumulative_profit": 0.0,
@@ -558,18 +558,27 @@ def render_roi_chart(df: pd.DataFrame) -> None:
     }])
     df_plot = pd.concat([start, df], ignore_index=True)
 
-    # Kleur op basis van laatste waarde
+    # Kleur op basis van laatste ROI
     laatste_roi = df["cumulative_roi_pct"].iloc[-1]
     lijn_kleur = "#22c55e" if laatste_roi >= 0 else "#ef4444"
 
+    # Metrics bovenaan
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total bets", int(df["cumulative_bets"].iloc[-1]))
     col2.metric("Total profit", f"{df['cumulative_profit'].iloc[-1]:+.2f} units")
     col3.metric("ROI", f"{laatste_roi:+.1f}%")
     col4.metric("Tracking since", df["settle_date"].min().strftime("%d %b %Y"))
 
-    # Cumulatieve profit lijn
-    profit_chart = alt.Chart(df_plot).mark_line(
+    # === HOOFDGRAFIEK: cumulatieve profit ===
+    area = alt.Chart(df_plot).mark_area(
+        color=lijn_kleur,
+        opacity=0.08,
+    ).encode(
+        x=alt.X("settle_date:T", title="Date", axis=alt.Axis(format="%d %b")),
+        y=alt.Y("cumulative_profit:Q", title="Cumulative profit (units)"),
+    )
+
+    profit_lijn = alt.Chart(df_plot).mark_line(
         color=lijn_kleur,
         strokeWidth=2.5,
     ).encode(
@@ -577,36 +586,75 @@ def render_roi_chart(df: pd.DataFrame) -> None:
         y=alt.Y("cumulative_profit:Q", title="Cumulative profit (units)"),
         tooltip=[
             alt.Tooltip("settle_date:T", title="Date", format="%d %b %Y"),
-            alt.Tooltip("cumulative_profit:Q", title="Profit", format="+.2f"),
+            alt.Tooltip("cumulative_profit:Q", title="All picks profit", format="+.2f"),
             alt.Tooltip("cumulative_roi_pct:Q", title="ROI %", format="+.1f"),
             alt.Tooltip("cumulative_bets:Q", title="Total bets", format=".0f"),
         ],
     )
 
-    # Nullijn
     nullijn = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(
         color="#94a3b8",
         strokeDash=[4, 4],
         strokeWidth=1,
     ).encode(y="y:Q")
 
-    # Gebied onder de lijn
-    area = alt.Chart(df_plot).mark_area(
-        color=lijn_kleur,
-        opacity=0.08,
-    ).encode(
-        x="settle_date:T",
-        y="cumulative_profit:Q",
-    )
+    hoofd_chart = area + nullijn + profit_lijn
+
+    # === A+ LIJN (indien beschikbaar) ===
+    if df_aplus is not None and not df_aplus.empty:
+        df_aplus = df_aplus.copy()
+        df_aplus["settle_date"] = pd.to_datetime(df_aplus["settle_date"])
+
+        start_ap = pd.DataFrame([{
+            "settle_date": df_aplus["settle_date"].min() - pd.Timedelta(days=1),
+            "cumulative_profit": 0.0,
+            "cumulative_roi_pct": 0.0,
+            "cumulative_bets": 0,
+        }])
+        df_aplus_plot = pd.concat([start_ap, df_aplus], ignore_index=True)
+
+        aplus_lijn = alt.Chart(df_aplus_plot).mark_line(
+            color="#f59e0b",
+            strokeWidth=2,
+            strokeDash=[6, 3],
+        ).encode(
+            x=alt.X("settle_date:T", title="Date", axis=alt.Axis(format="%d %b")),
+            y=alt.Y("cumulative_profit:Q"),
+            tooltip=[
+                alt.Tooltip("settle_date:T", title="Date", format="%d %b %Y"),
+                alt.Tooltip("cumulative_profit:Q", title="A+ profit", format="+.2f"),
+                alt.Tooltip("cumulative_roi_pct:Q", title="A+ ROI %", format="+.1f"),
+                alt.Tooltip("cumulative_bets:Q", title="A+ bets", format=".0f"),
+            ],
+        )
+
+        hoofd_chart = hoofd_chart + aplus_lijn
+
+        # A+ metrics naast de hoofdmetrics
+        ap_roi = df_aplus["cumulative_roi_pct"].iloc[-1]
+        st.caption(
+            f"🟡 Dashed line = **A+ picks only** "
+            f"({int(df_aplus['cumulative_bets'].iloc[-1])} bets, "
+            f"{df_aplus['cumulative_profit'].iloc[-1]:+.2f} units, "
+            f"ROI {ap_roi:+.1f}%)"
+        )
 
     st.altair_chart(
-        (area + nullijn + profit_chart).properties(height=280),
+        hoofd_chart.properties(height=300),
         use_container_width=True,
     )
 
-# Dagelijkse profit als bar chart (groen/rood per dag)
-    bar_chart = alt.Chart(df).mark_bar(
-        opacity=0.75,
+    # === BAR CHART: dagelijkse profit ===
+    # Verwijder extreme uitschieters voor schaal (top/bottom 10%)
+    df_bar = df.copy()
+    p10 = df_bar["daily_profit"].quantile(0.10)
+    p90 = df_bar["daily_profit"].quantile(0.90)
+    df_bar = df_bar[df_bar["daily_profit"].between(p10 * 2, p90 * 2)]
+    abs_max = float(df_bar["daily_profit"].abs().max()) if not df_bar.empty else 5.0
+    marge = max(abs_max * 1.2, 2.0)
+
+    bar_chart = alt.Chart(df_bar).mark_bar(
+        opacity=0.8,
         cornerRadiusTopLeft=2,
         cornerRadiusTopRight=2,
     ).encode(
@@ -617,34 +665,28 @@ def render_roi_chart(df: pd.DataFrame) -> None:
         ),
         y=alt.Y(
             "daily_profit:Q",
-            title="Daily profit (units)",
-            scale=alt.Scale(
-                domain=[
-                    float(df["daily_profit"].quantile(0.05)),
-                    float(df["daily_profit"].quantile(0.95)),
-                ]
-            ),
+            title="Daily profit",
+            scale=alt.Scale(domain=[-marge, marge]),
         ),
         color=alt.condition(
             alt.datum.daily_profit >= 0,
-            alt.value("#22c55e"),   # groen voor winstdagen
-            alt.value("#ef4444"),   # rood voor verliessdagen
+            alt.value("#22c55e"),
+            alt.value("#ef4444"),
         ),
         tooltip=[
             alt.Tooltip("settle_date:T", title="Date", format="%d %b %Y"),
-            alt.Tooltip("bets:Q", title="Bets"),
+            alt.Tooltip("bets:Q", title="Bets settled"),
             alt.Tooltip("daily_profit:Q", title="Daily profit", format="+.2f"),
         ],
-    ).properties(height=120)
+    )
 
-    # Nullijn in de bar chart
     bar_nullijn = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(
-        color="#94a3b8",
+        color="#64748b",
         strokeWidth=1,
     ).encode(y="y:Q")
 
     st.altair_chart(
-        (bar_nullijn + bar_chart).properties(height=120),
+        (bar_nullijn + bar_chart).properties(height=110),
         use_container_width=True,
     )
 
@@ -774,33 +816,33 @@ def fail_explanation(row: pd.Series) -> str:
 
     if reason == "value":
         margin = row.get("value_margin", row.get("single_fail_margin"))
-        return f"Value mist de grens met {fmt_num(abs(margin), 4)}."
+        return f"Value misses the threshold by {fmt_num(abs(margin), 4)}."
 
     if reason == "prob":
         margin = row.get("prob_margin", row.get("single_fail_margin"))
-        return f"Probability zit {fmt_num(abs(margin), 4)} onder de minimumgrens."
+        return f"Probability is {fmt_num(abs(margin), 4)} below the minimum threshold."
 
     if reason == "odds":
         margin = row.get("odds_margin", row.get("single_fail_margin"))
-        return f"Odds vallen buiten de toegestane range met marge {fmt_num(margin, 4)}."
+        return f"Odds fall outside the allowed range by {fmt_num(margin, 4)}."
 
     if reason == "drift":
         drift = row.get("selected_drift", row.get("drift_pct"))
-        return f"Drift faalt: markt beweegt tegen of onvoldoende mee. Drift: {fmt_pct(drift)}."
+        return f"Drift fails: market moving against or insufficient support. Drift: {fmt_pct(drift)}."
 
     if reason == "snap":
         needed = row.get("snap_needed")
-        return f"Te weinig snapshots. Nog nodig: {fmt_num(needed, 0)}."
+        return f"Not enough snapshots yet. Still needed: {fmt_num(needed, 0)}."
 
     if reason == "rating":
         margin = row.get("rating_margin", row.get("single_fail_margin"))
-        return f"Rating gap mist de grens met {fmt_num(abs(margin), 2)}."
+        return f"Rating gap misses the threshold by {fmt_num(abs(margin), 2)}."
 
     if reason == "edge":
         margin = row.get("edge_margin", row.get("single_fail_margin"))
-        return f"Home edge faalt. Edge margin: {fmt_num(margin, 2)}."
+        return f"Home edge fails. Edge margin: {fmt_num(margin, 2)}."
 
-    return "Geen specifieke uitleg beschikbaar."
+    return "No specific explanation available."
 
 
 def render_research_cards(df: pd.DataFrame, kind: str, empty_text: str) -> None:
@@ -843,9 +885,9 @@ def render_research_cards(df: pd.DataFrame, kind: str, empty_text: str) -> None:
             mid[1].metric("Margin", fmt_num(r.get("single_fail_margin"), 4))
             mid[2].metric("Snapshots", metric_value(r.get("n_snapshots")))
             mid[3].metric("Drift", fmt_pct(drift))
-            mid[4].metric("Snap nodig", metric_value(r.get("snap_needed")))
+            mid[4].metric("Snaps needed", metric_value(r.get("snap_needed")))
 
-            st.markdown(f"**Interpretatie:** {fail_explanation(r)}")
+            st.markdown(f"**Analysis:** {fail_explanation(r)}")
 
             margin_cols = [
                 "prob_margin",
@@ -864,10 +906,10 @@ def render_research_cards(df: pd.DataFrame, kind: str, empty_text: str) -> None:
                 )
                 margin_df["marge"] = pd.to_numeric(margin_df["marge"], errors="coerce").round(4)
 
-                with st.expander("Marge-details", expanded=False):
+                with st.expander("Margin details", expanded=False):
                     st.dataframe(margin_df, width="stretch", hide_index=True)
 
-            with st.expander("Alle details", expanded=False):
+            with st.expander("All details", expanded=False):
                 st.dataframe(pd.DataFrame([r]).pipe(prepare_display_df), width="stretch", hide_index=True)
 
 # -----------------------------------------------------------------------------
@@ -1126,6 +1168,50 @@ WITH settled AS (
     WHERE selection IS NOT NULL
       AND outcome IN ('WIN', 'LOSS')
       AND settled_at IS NOT NULL
+),
+daily AS (
+    SELECT
+        settle_date,
+        COUNT(*) AS bets,
+        SUM(CASE WHEN outcome = 'WIN' THEN selected_odds - 1 ELSE -1 END) AS daily_profit
+    FROM settled
+    GROUP BY settle_date
+),
+cumulative AS (
+    SELECT
+        settle_date,
+        bets,
+        daily_profit,
+        SUM(daily_profit) OVER (ORDER BY settle_date) AS cumulative_profit,
+        SUM(bets) OVER (ORDER BY settle_date) AS cumulative_bets
+    FROM daily
+)
+SELECT
+    settle_date,
+    bets,
+    ROUND(daily_profit::numeric, 2) AS daily_profit,
+    ROUND(cumulative_profit::numeric, 2) AS cumulative_profit,
+    ROUND(cumulative_bets::numeric, 0) AS cumulative_bets,
+    ROUND((cumulative_profit / NULLIF(cumulative_bets, 0) * 100)::numeric, 1) AS cumulative_roi_pct
+FROM cumulative
+ORDER BY settle_date;
+"""
+
+SQL_ROI_OVER_TIME_APLUS = """
+WITH settled AS (
+    SELECT
+        DATE(settled_at AT TIME ZONE 'Europe/Amsterdam') AS settle_date,
+        outcome,
+        CASE
+            WHEN selection = 'HOME' THEN odds_home
+            WHEN selection = 'AWAY' THEN odds_away
+            WHEN selection = 'DRAW' THEN odds_draw
+        END AS selected_odds
+    FROM public.picks_evaluated
+    WHERE selection IS NOT NULL
+      AND outcome IN ('WIN', 'LOSS')
+      AND settled_at IS NOT NULL
+      AND pick_tier = 'A+'
 ),
 daily AS (
     SELECT
@@ -1613,7 +1699,8 @@ with tab_status:
         st.subheader("Performance over time")
         try:
             roi_time = query_df(SQL_ROI_OVER_TIME)
-            render_roi_chart(roi_time)
+            roi_aplus = query_df(SQL_ROI_OVER_TIME_APLUS)
+            render_roi_chart(roi_time, df_aplus=roi_aplus if not roi_aplus.empty else None)
         except Exception as exc:
             st.warning("Could not load ROI chart.")
             st.exception(exc)
@@ -1720,18 +1807,18 @@ with tab_picks:
                             )
                         with h2:
                             st.markdown(
-                                chip("Bijna een pick", "warn") + " " + chip(label_tekst, label_kind),
+                                chip("Almost a pick", "warn") + " " + chip(label_tekst, label_kind),
                                 unsafe_allow_html=True,
                             )
                         with h3:
-                            st.metric("Advies", side)
+                            st.metric("Advice", side)
 
                         c1, c2, c3, c4, c5 = st.columns(5)
                         c1.metric("Odds", fmt_num(odds, 2))
-                        c2.metric("ECI-kans", fmt_pct(prob))
+                        c2.metric("Win prob", fmt_pct(prob))
                         c3.metric("Value", fmt_num(value, 3))
                         c4.metric("Strength", fmt_num(strength, 2))
-                        c5.metric("Marge", fmt_num(margin, 4))
+                        c5.metric("Margin", fmt_num(margin, 4))
 
                         # Leesbare uitleg
                         uitleg = fail_explanation(r)
@@ -1742,8 +1829,8 @@ with tab_picks:
 
                         st.info(f"💡 {uitleg}")
 
-                with st.expander("Tabelweergave", expanded=False):
-                    show_df(df, "Geen single fails gevonden.")
+                with st.expander("Table view", expanded=False):
+                    show_df(df, "No single fails found.")
     except Exception as exc:
         st.error("Picks konden niet worden geladen.")
         st.exception(exc)
