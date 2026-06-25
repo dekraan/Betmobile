@@ -295,6 +295,66 @@ def render_chips(items: list[str], kind: str, max_items: int = 10) -> None:
         html += " " + chip(f"+{len(items) - max_items} meer", "neutral")
     st.markdown(html, unsafe_allow_html=True)
 
+def vertaal_tag(tag: str) -> str | None:
+    tag = tag.strip()
+
+    hide = {"passes:danger_combo_v2", "passes:danger_combo_v2_no_longshots"}
+    if tag in hide:
+        return None
+
+    translations = {
+        "type:MAIN":               "Main pick",
+        "type:SECONDARY":          "Secondary pick",
+        "market:SUPPORT":          "✅ Market moving in our favour",
+        "market:AGAINST":          "⚠️ Market moving against",
+        "market:NEUTRAL":          "Market neutral",
+        "season:early":            "Early season",
+        "season:mid":              "Mid season",
+        "season:late":             "Late season",
+        "season:summer":           "Summer break",
+        "MAIN_strength_below_2":   "⚠️ Weak strength (< 2.0)",
+        "odds_2.2_3.0":            "⚠️ Risky odds zone (2.2–3.0)",
+        "prob_55_60":              "⚠️ Uncertain probability range (55–60%)",
+        "rating_gap_below_250":    "⚠️ Small rating gap (< 250)",
+        "low_odds_high_prob_70plus":"⚠️ Short price with high probability",
+        "support_odds_2.2_3.0":    "⚠️ Market support in risky odds zone",
+    }
+
+    if tag in translations:
+        return translations[tag]
+
+    if tag.startswith("odds:"):        return f"Odds {tag[5:]}"
+    if tag.startswith("prob:"):        return f"Probability {tag[5:]}"
+    if tag.startswith("gap:"):         return f"Rating gap {tag[4:]}"
+    if tag.startswith("value:"):       return f"Value {tag[6:]}"
+    if tag.startswith("strength:"):    return f"Strength {tag[9:]}"
+    if tag.startswith("snapshots:"):   return f"Snapshots {tag[10:]}"
+    if tag.startswith("competition:"): return f"🏆 {tag[12:]}"
+    if tag.startswith("month:"):       return f"Month {tag[6:]}"
+
+    if tag.startswith("drift:"):
+        val = tag[6:]
+        if val.startswith("-"):
+            return f"Drift {val} (market support)"
+        return f"Drift {val}"
+
+    days = {
+        "Monday": "Monday", "Tuesday": "Tuesday", "Wednesday": "Wednesday",
+        "Thursday": "Thursday", "Friday": "Friday",
+        "Saturday": "Saturday", "Sunday": "Sunday",
+    }
+    if tag.startswith("weekday:"):
+        return f"📅 {days.get(tag[8:], tag[8:])}"
+
+    if tag.startswith("dynamic_strong:"):
+        name = tag[15:].replace("strong_", "").replace("__", " + ").replace("_", " ")
+        return f"✅ Strong segment: {name}"
+
+    if tag.startswith("dynamic_danger:"):
+        name = tag[15:].replace("danger_", "").replace("__", " + ").replace("_", " ")
+        return f"⚠️ Danger segment: {name}"
+
+    return tag.replace("_", " ").replace(":", ": ")
 
 def bool_label(value: Any) -> str:
     if value is True or str(value).lower() == "true":
@@ -393,6 +453,200 @@ def render_manual_check(row: pd.Series) -> None:
     c3.metric("Snapshots", metric_value(row.get("n_snapshots")))
     c4.metric("Drift gekozen", fmt_pct(row.get("selected_drift_pct")))
 
+def render_pick_summary(row: pd.Series) -> None:
+    """Toont een leesbare Engelse samenvatting van waarom dit een pick is."""
+    tier = str(row.get("pick_tier") or "").strip()
+    pick_type = str(row.get("pick_type") or "").strip().upper()
+    competition = row.get("competition", "")
+    selection = str(row.get("selection") or "").strip()
+    odds = row.get("selected_odds")
+    prob = row.get("selected_prob")
+    value = row.get("selected_value_score") or row.get("selected_value")
+    strength = selected_strength(row)
+    rating_gap = row.get("rating_gap")
+    n_snapshots = row.get("n_snapshots") or row.get("snapshot_count")
+    drift = row.get("selected_drift_pct")
+    market = row.get("market_support", "NEUTRAL")
+
+    # Opener op basis van tier
+    tier_openers = {
+        "A+": "🌟 **Top pick.** ECI has a clear edge here.",
+        "A":  "✅ **Strong pick.** Passes all quality checks.",
+        "A-": "👍 **Good pick** with one mixed signal.",
+        "B":  "📋 **Regular pick.** Meets all base criteria.",
+        "C":  "🔬 **Secondary pick.** Value just below threshold.",
+        "X":  "⚠️ **Flagged pick.** Multiple danger signals present.",
+    }
+    opener = tier_openers.get(tier, "Pick meets selection criteria.")
+    st.markdown(opener)
+
+    # Bouw de kernredenering op als zinnen
+    parts = []
+
+    # Rating gap
+    if rating_gap is not None and not pd.isna(rating_gap):
+        gap = int(rating_gap)
+        if gap >= 900:
+            parts.append(f"The rating gap is **{gap}** — a large quality difference between the teams.")
+        elif gap >= 500:
+            parts.append(f"The rating gap is **{gap}** — a meaningful quality difference.")
+        else:
+            parts.append(f"The rating gap is **{gap}**.")
+
+    # Probability
+    if prob is not None and not pd.isna(prob):
+        pct = round(float(prob) * 100, 1)
+        if pct >= 70:
+            parts.append(f"Our model gives the {selection} side a strong **{pct}%** win probability.")
+        elif pct >= 60:
+            parts.append(f"Our model gives the {selection} side a solid **{pct}%** win probability.")
+        else:
+            parts.append(f"Our model gives the {selection} side a **{pct}%** win probability.")
+
+    # Value
+    if value is not None and not pd.isna(value):
+        v = round(float(value), 3)
+        if v >= 1.20:
+            parts.append(f"Value is **{v}** — the model sees meaningful edge over the bookmaker.")
+        elif v >= 1.10:
+            parts.append(f"Value is **{v}** — a decent edge over the implied probability.")
+        else:
+            parts.append(f"Value is **{v}** — just above the threshold.")
+
+    # Markt
+    if market == "SUPPORT":
+        parts.append("📉 The market is moving in our direction — odds have shortened.")
+    elif market == "AGAINST":
+        parts.append("📈 Note: the market is moving the other way.")
+
+    # Snapshots
+    if n_snapshots is not None and not pd.isna(n_snapshots):
+        snaps = int(n_snapshots)
+        if snaps >= 20:
+            parts.append(f"Well-tracked with **{snaps} snapshots** — line is stable.")
+        elif snaps >= 10:
+            parts.append(f"Tracked over **{snaps} snapshots**.")
+        else:
+            parts.append(f"Based on **{snaps} snapshots** — still early in tracking.")
+
+    # Sterk segment
+    sector_tags = split_tags(row.get("sector_tags"))
+    strong = [t for t in sector_tags if t.startswith("dynamic_strong:")]
+    if strong:
+        parts.append("✅ Matches a historically strong segment in our backtest data.")
+
+    if parts:
+        st.markdown(" ".join(parts))
+
+def render_roi_chart(df: pd.DataFrame) -> None:
+    """Toont cumulatieve ROI grafiek over tijd."""
+    if df.empty:
+        st.info("No settled picks yet to display.")
+        return
+
+    import altair as alt
+
+    df = df.copy()
+    df["settle_date"] = pd.to_datetime(df["settle_date"])
+
+    # Voeg een nulpunt toe aan het begin
+    start = pd.DataFrame([{
+        "settle_date": df["settle_date"].min() - pd.Timedelta(days=1),
+        "cumulative_profit": 0.0,
+        "cumulative_roi_pct": 0.0,
+        "cumulative_bets": 0,
+    }])
+    df_plot = pd.concat([start, df], ignore_index=True)
+
+    # Kleur op basis van laatste waarde
+    laatste_roi = df["cumulative_roi_pct"].iloc[-1]
+    lijn_kleur = "#22c55e" if laatste_roi >= 0 else "#ef4444"
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total bets", int(df["cumulative_bets"].iloc[-1]))
+    col2.metric("Total profit", f"{df['cumulative_profit'].iloc[-1]:+.2f} units")
+    col3.metric("ROI", f"{laatste_roi:+.1f}%")
+    col4.metric("Tracking since", df["settle_date"].min().strftime("%d %b %Y"))
+
+    # Cumulatieve profit lijn
+    profit_chart = alt.Chart(df_plot).mark_line(
+        color=lijn_kleur,
+        strokeWidth=2.5,
+    ).encode(
+        x=alt.X("settle_date:T", title="Date", axis=alt.Axis(format="%d %b")),
+        y=alt.Y("cumulative_profit:Q", title="Cumulative profit (units)"),
+        tooltip=[
+            alt.Tooltip("settle_date:T", title="Date", format="%d %b %Y"),
+            alt.Tooltip("cumulative_profit:Q", title="Profit", format="+.2f"),
+            alt.Tooltip("cumulative_roi_pct:Q", title="ROI %", format="+.1f"),
+            alt.Tooltip("cumulative_bets:Q", title="Total bets", format=".0f"),
+        ],
+    )
+
+    # Nullijn
+    nullijn = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(
+        color="#94a3b8",
+        strokeDash=[4, 4],
+        strokeWidth=1,
+    ).encode(y="y:Q")
+
+    # Gebied onder de lijn
+    area = alt.Chart(df_plot).mark_area(
+        color=lijn_kleur,
+        opacity=0.08,
+    ).encode(
+        x="settle_date:T",
+        y="cumulative_profit:Q",
+    )
+
+    st.altair_chart(
+        (area + nullijn + profit_chart).properties(height=280),
+        use_container_width=True,
+    )
+
+# Dagelijkse profit als bar chart (groen/rood per dag)
+    bar_chart = alt.Chart(df).mark_bar(
+        opacity=0.75,
+        cornerRadiusTopLeft=2,
+        cornerRadiusTopRight=2,
+    ).encode(
+        x=alt.X(
+            "settle_date:T",
+            title="Date",
+            axis=alt.Axis(format="%d %b"),
+        ),
+        y=alt.Y(
+            "daily_profit:Q",
+            title="Daily profit (units)",
+            scale=alt.Scale(
+                domain=[
+                    float(df["daily_profit"].quantile(0.05)),
+                    float(df["daily_profit"].quantile(0.95)),
+                ]
+            ),
+        ),
+        color=alt.condition(
+            alt.datum.daily_profit >= 0,
+            alt.value("#22c55e"),   # groen voor winstdagen
+            alt.value("#ef4444"),   # rood voor verliessdagen
+        ),
+        tooltip=[
+            alt.Tooltip("settle_date:T", title="Date", format="%d %b %Y"),
+            alt.Tooltip("bets:Q", title="Bets"),
+            alt.Tooltip("daily_profit:Q", title="Daily profit", format="+.2f"),
+        ],
+    ).properties(height=120)
+
+    # Nullijn in de bar chart
+    bar_nullijn = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(
+        color="#94a3b8",
+        strokeWidth=1,
+    ).encode(y="y:Q")
+
+    st.altair_chart(
+        (bar_nullijn + bar_chart).properties(height=120),
+        use_container_width=True,
+    )
 
 def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
     if df.empty:
@@ -412,7 +666,7 @@ def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
     with filter_cols[2]:
         only_safe = st.checkbox("Verberg X/danger", value=False)
     with filter_cols[3]:
-        comp_filter = st.multiselect("Competitie", comps, default=[])
+        comp_filter = st.multiselect("Competition", comps, default=[])
 
     work = df.copy()
     if tier_filter and "pick_tier" in work.columns:
@@ -428,7 +682,7 @@ def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
         st.info("Geen picks binnen deze filters.")
         return
 
-    st.caption(f"{len(work)} picks — scan de kaart, open ‘Waarom?’ voor de volledige rule-check.")
+    st.caption(f"{len(work)} picks — click a card for the full rule breakdown.")
 
     for _, r in work.iterrows():
         title = f"{r.get('home_team', '—')} - {r.get('away_team', '—')}"
@@ -449,32 +703,34 @@ def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
             with top_mid:
                 st.markdown(chip(badge, kind) + " " + chip(str(pick_type), "neutral"), unsafe_allow_html=True)
             with top_right:
-                st.metric("Advies", selection)
+                st.metric("Advice", selection)
 
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Odds", fmt_num(r.get("selected_odds"), 2))
-            c2.metric("ECI-kans", fmt_pct(r.get("selected_prob")))
+            c2.metric("Win probability", fmt_pct(r.get("selected_prob")))
             c3.metric("Value", fmt_num(r.get("selected_value"), 3))
             c4.metric("Strength", fmt_num(selected_strength(r), 2))
             c5.metric("Drift", fmt_pct(r.get("selected_drift_pct")))
 
-            reason = r.get("classification_reason")
-            if reason is not None and not pd.isna(reason) and str(reason).strip():
-                st.markdown(f"**Waarom:** {reason}")
+            render_pick_summary(r)
 
             if danger:
-                render_chips(danger, "bad", max_items=8)
+                danger_leesbaar = [t for t in (vertaal_tag(x) for x in danger) if t]
+                render_chips(danger_leesbaar, "bad", max_items=8)
             elif sector:
-                # Toon alleen de meest bruikbare tags op kaartniveau.
-                visible = [x for x in sector if x.startswith(("market:", "passes:", "dynamic_strong:", "strength:", "prob:", "odds:", "value:"))]
-                render_chips(visible[:8] or sector[:8], "good", max_items=8)
+                visible = [x for x in sector if x.startswith((
+                    "market:", "dynamic_strong:", "dynamic_danger:",
+                    "strength:", "prob:", "odds:", "value:", "competition:"
+                ))]
+                visible_leesbaar = [t for t in (vertaal_tag(x) for x in (visible[:8] or sector[:8])) if t]
+                render_chips(visible_leesbaar, "good", max_items=8)
             else:
-                st.markdown(chip("geen extra tags", "neutral"), unsafe_allow_html=True)
+                st.markdown(chip("no additional tags", "neutral"), unsafe_allow_html=True)
 
-            with st.expander("Waarom is dit een pick? / handmatige check", expanded=False):
+            with st.expander("Full rule check", expanded=False):
                 render_manual_check(r)
 
-                st.markdown("**Kernstats**")
+                st.markdown("**Key stats**")
                 stats = {
                     "run_id": r.get("run_id"),
                     "match_id": r.get("match_id"),
@@ -504,13 +760,13 @@ def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
                 st.dataframe(pd.DataFrame([stats]).pipe(prepare_display_df), width="stretch", hide_index=True)
 
                 if r.get("rule_reason") is not None and not pd.isna(r.get("rule_reason")):
-                    st.markdown("**Ruwe rule_reason**")
+                    st.markdown("**Raw rule reason**")
                     st.code(str(r.get("rule_reason")), language="text")
                 if sector:
-                    st.markdown("**Alle sector tags**")
+                    st.markdown("**All sector tags**")
                     render_chips(sector, "neutral", max_items=40)
                 if danger:
-                    st.markdown("**Alle danger tags**")
+                    st.markdown("**All danger tags**")
                     render_chips(danger, "bad", max_items=40)
 
 def fail_explanation(row: pd.Series) -> str:
@@ -855,6 +1111,50 @@ SELECT
 FROM settled;
 """
 
+SQL_ROI_OVER_TIME = """
+WITH settled AS (
+    SELECT
+        DATE(settled_at AT TIME ZONE 'Europe/Amsterdam') AS settle_date,
+        outcome,
+        CASE
+            WHEN selection = 'HOME' THEN odds_home
+            WHEN selection = 'AWAY' THEN odds_away
+            WHEN selection = 'DRAW' THEN odds_draw
+        END AS selected_odds,
+        pick_tier
+    FROM public.picks_evaluated
+    WHERE selection IS NOT NULL
+      AND outcome IN ('WIN', 'LOSS')
+      AND settled_at IS NOT NULL
+),
+daily AS (
+    SELECT
+        settle_date,
+        COUNT(*) AS bets,
+        SUM(CASE WHEN outcome = 'WIN' THEN selected_odds - 1 ELSE -1 END) AS daily_profit
+    FROM settled
+    GROUP BY settle_date
+),
+cumulative AS (
+    SELECT
+        settle_date,
+        bets,
+        daily_profit,
+        SUM(daily_profit) OVER (ORDER BY settle_date) AS cumulative_profit,
+        SUM(bets) OVER (ORDER BY settle_date) AS cumulative_bets
+    FROM daily
+)
+SELECT
+    settle_date,
+    bets,
+    ROUND(daily_profit::numeric, 2) AS daily_profit,
+    ROUND(cumulative_profit::numeric, 2) AS cumulative_profit,
+    ROUND(cumulative_bets::numeric, 0) AS cumulative_bets,
+    ROUND((cumulative_profit / NULLIF(cumulative_bets, 0) * 100)::numeric, 1) AS cumulative_roi_pct
+FROM cumulative
+ORDER BY settle_date;
+"""
+
 SQL_TIER_SUMMARY = """
 WITH settled AS (
     SELECT
@@ -1145,7 +1445,7 @@ with st.sidebar:
 
     st.header("Dashboard")
 
-    if st.button("Ververs dashboard", width="stretch"):
+    if st.button("Refresh dashboard", width="stretch"):
         st.cache_data.clear()
         st.success("Dashboard ververst")
 
@@ -1153,7 +1453,7 @@ with st.sidebar:
 
     st.header("Data")
 
-    if st.button("Haal odds op", width="stretch"):
+    if st.button("Fetch odds", width="stretch"):
 
         with st.spinner("run_snapshot.py draait..."):
 
@@ -1173,12 +1473,12 @@ with st.sidebar:
     st.header("Model")
 
     if st.button(
-        "Odds ophalen + model draaien",
+        "Fetch odds + run model",
         type="primary",
         width="stretch"
     ):
 
-        with st.spinner("Snapshot ophalen..."):
+        with st.spinner("Fetching snapshot..."):
 
             code1, _, _ = run_python_script(
                 SNAPSHOT_PATH,
@@ -1187,7 +1487,7 @@ with st.sidebar:
 
         if code1 == 0:
 
-            with st.spinner("Model draaien..."):
+            with st.spinner("Running model..."):
 
                 code2, _, _ = run_python_script(
                     RUN_MODEL_PATH,
@@ -1204,7 +1504,7 @@ with st.sidebar:
             st.error("Snapshot mislukt")
 
     if st.button(
-        "Alleen model draaien",
+        "Run model only",
         width="stretch"
     ):
 
@@ -1223,7 +1523,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("Onderhoud")
+    st.header("Maintenance")
 
     if st.button(
         "Settle picks",
@@ -1238,10 +1538,10 @@ with st.sidebar:
             )
 
         if code == 0:
-            st.success("Settle voltooid")
+            st.success("Settle complete")
             st.cache_data.clear()
         else:
-            st.error("Settle mislukt")
+            st.error("Settle failed")
 
     st.divider()
 
@@ -1310,26 +1610,27 @@ with tab_status:
             with st.expander("Recente run-id's en aantallen", expanded=False):
                 show_df(query_df(SQL_RECENT_RUNS_COMPACT), "Geen recente runs gevonden.")
 
-        st.subheader("Historische pickstatus")
+        st.subheader("Performance over time")
+        try:
+            roi_time = query_df(SQL_ROI_OVER_TIME)
+            render_roi_chart(roi_time)
+        except Exception as exc:
+            st.warning("Could not load ROI chart.")
+            st.exception(exc)
+
+        st.subheader("Pick summary")
         summary = query_df(SQL_PICK_SUMMARY)
-        roi = query_df(SQL_SETTLED_ROI)
         if not summary.empty:
             s = summary.iloc[0]
             c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Totaal", metric_value(s["total_picks"]))
+            c1.metric("Total", metric_value(s["total_picks"]))
             c2.metric("Open", metric_value(s["open_picks"]))
             c3.metric("Settled", metric_value(s["settled_picks"]))
             c4.metric("Wins", metric_value(s["wins"]))
-            c5.metric("Hitrate", metric_value(s["hitrate"]))
-        if not roi.empty:
-            r = roi.iloc[0]
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Bets", metric_value(r["bets"]))
-            c2.metric("Profit", metric_value(r["profit"]))
-            c3.metric("ROI", metric_value(r["roi"]))
+            c5.metric("Hit rate", metric_value(s["hitrate"]))
 
-        st.subheader("Resultaat per tier")
-        show_df(query_df(SQL_TIER_SUMMARY), "Nog geen gesettelde tier-data.")
+        st.subheader("Results by tier")
+        show_df(query_df(SQL_TIER_SUMMARY), "No settled tier data yet.")
 
         try:
             odds = query_df(SQL_ODDS_STATUS)
@@ -1350,33 +1651,99 @@ with tab_picks:
     st.subheader("Picks")
 
     view = st.radio(
-        "Weergave",
-        ["Vandaag + morgen", "Open picks", "Near misses", "Single fails", "Laatste 50"],
+        "View",
+        ["Today + tomorrow", "Open picks", "Near misses", "Single fails", "Last 50"],
         horizontal=True,
     )
 
     try:
-        if view == "Vandaag + morgen":
+        if view == "Today + tomorrow":
             df = query_df(SQL_TODAY_TOMORROW)
-            render_pick_cards(df, "Geen picks voor vandaag of morgen.")
-            with st.expander("Tabelweergave", expanded=False):
-                show_df(df, "Geen picks voor vandaag of morgen.")
+            render_pick_cards(df, "No picks for today or tomorrow.")
+            with st.expander("Table view", expanded=False):
+                show_df(df, "No picks for today or tomorrow.")
         elif view == "Open picks":
             df = query_df(SQL_OPEN_PICKS)
-            render_pick_cards(df, "Geen open picks gevonden.")
-            with st.expander("Tabelweergave", expanded=False):
-                show_df(df, "Geen open picks gevonden.")
-        elif view == "Laatste 50":
+            render_pick_cards(df, "No open picks found.")
+            with st.expander("Table view", expanded=False):
+                show_df(df, "No open picks found.")
+        elif view == "Last 50":
             df = query_df(SQL_LATEST_PICKS)
-            render_pick_cards(df, "Geen picks gevonden.")
-            with st.expander("Tabelweergave", expanded=False):
-                show_df(df, "Geen picks gevonden.")
+            render_pick_cards(df, "No picks found.")
+            with st.expander("Table view", expanded=False):
+                show_df(df, "No picks found.")
         elif view == "Near misses":
             df = query_df(SQL_NEAR_MISS)
-            show_df(df, "Geen near misses gevonden.")
+            show_df(df, "No near misses found.")
         else:
             df = query_df(SQL_SINGLE_FAIL)
-            show_df(df, "Geen single fails gevonden.")
+            if df.empty:
+                st.info("Geen single fails gevonden.")
+            else:
+                st.caption(f"{len(df)} matches that missed on exactly one filter.")
+                for _, r in df.iterrows():
+                    reason = str(r.get("fail_reason", "—")).lower()
+                    side = r.get("side", "—")
+                    odds = r.get("odds", r.get("selected_odds"))
+                    prob = r.get("probability", r.get("selected_prob"))
+                    value = r.get("value_score", r.get("selected_value"))
+                    strength = r.get("single_fail_raw_strength", r.get("strength"))
+                    margin = r.get("single_fail_margin")
+                    snap_needed = r.get("snap_needed")
+
+                    # Label per reden
+                    reden_labels = {
+                        "snap":   ("🕐 Waiting for snapshots", "warn"),
+                        "value":  ("📉 Value just below threshold", "warn"),
+                        "prob":   ("📊 Probability just below threshold", "warn"),
+                        "odds":   ("🎯 Odds outside range", "neutral"),
+                        "rating": ("📏 Rating gap too small", "neutral"),
+                        "drift":  ("📈 Market moving against", "bad"),
+                        "edge":   ("🏠 Home edge missing", "neutral"),
+                    }
+                    label_tekst, label_kind = reden_labels.get(reason, (f"❓ {reason}", "neutral"))
+
+                    with st.container(border=True):
+                        h1, h2, h3 = st.columns([4, 2, 1.5])
+                        with h1:
+                            st.markdown(
+                                f'<div class="bm-card-title">'
+                                f'{r.get("home_team","—")} - {r.get("away_team","—")}'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown(
+                                f'<div class="bm-muted">'
+                                f'{r.get("date","—")} · {r.get("competition","—")}'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with h2:
+                            st.markdown(
+                                chip("Bijna een pick", "warn") + " " + chip(label_tekst, label_kind),
+                                unsafe_allow_html=True,
+                            )
+                        with h3:
+                            st.metric("Advies", side)
+
+                        c1, c2, c3, c4, c5 = st.columns(5)
+                        c1.metric("Odds", fmt_num(odds, 2))
+                        c2.metric("ECI-kans", fmt_pct(prob))
+                        c3.metric("Value", fmt_num(value, 3))
+                        c4.metric("Strength", fmt_num(strength, 2))
+                        c5.metric("Marge", fmt_num(margin, 4))
+
+                        # Leesbare uitleg
+                        uitleg = fail_explanation(r)
+                        if reason == "snap" and snap_needed:
+                            uitleg += f" Check back after the next snapshot run."
+                        elif reason == "value" and margin is not None:
+                            uitleg += f" Small gap — could flip if odds move."
+
+                        st.info(f"💡 {uitleg}")
+
+                with st.expander("Tabelweergave", expanded=False):
+                    show_df(df, "Geen single fails gevonden.")
     except Exception as exc:
         st.error("Picks konden niet worden geladen.")
         st.exception(exc)
@@ -1387,51 +1754,51 @@ with tab_research:
     research_view = st.radio(
         "Onderdeel",
         [
-            "Near miss kansen",
-            "Single fail kansen",
+            "Near miss opportunities",
+            "Single fail opportunities",
             "Near misses",
             "Single fails",
-            "Competities",
-            "Tier resultaat",
+            "Competitions",
+            "Tier results",
         ],
         horizontal=True,
     )
 
     try:
-        if research_view == "Near miss kansen":
-            st.markdown("### Open near misses met potentie")
-            st.caption("Toekomstige near misses, gesorteerd op strength en marge.")
+        if research_view == "Near miss opportunities":
+            st.markdown("### Open near misses with potential")
+            st.caption("Upcoming near misses, sorted by strength and margin.")
             df = query_df(SQL_NEAR_MISS_OPEN_CARDS)
-            render_research_cards(df, "near_miss", "Geen open near misses gevonden.")
+            render_research_cards(df, "near_miss", "No open near misses found.")
 
-        elif research_view == "Single fail kansen":
-            st.markdown("### Open single fails met potentie")
-            st.caption("Toekomstige single fails, gesorteerd op calibrated strength en marge.")
+        elif research_view == "Single fail opportunities":
+            st.markdown("### Open single fails with potential")
+            st.caption("Upcoming single fails, sorted by calibrated strength and margin.")
             df = query_df(SQL_SINGLE_FAIL_OPEN_CARDS)
-            render_research_cards(df, "single_fail", "Geen open single fails gevonden.")
+            render_research_cards(df, "single_fail", "No open single fails found.")
 
         elif research_view == "Near misses":
-            st.markdown("### Near misses per fail reason")
-            st.caption("Laat zien welke bijna-picks vooral voorkomen en hoe ze historisch presteren.")
+            st.markdown("### Near misses by fail reason")
+            st.caption("Shows which near-picks occur most often and how they perform historically.")
             df = query_df(SQL_NEAR_MISS_SUMMARY)
-            show_df(df, "Geen near miss data gevonden.")
+            show_df(df, "No near miss data found.")
 
         elif research_view == "Single fails":
-            st.markdown("### Single fails per fail reason")
-            st.caption("Laat zien welke single-fail redenen interessant of juist gevaarlijk lijken.")
+            st.markdown("### Single fails by fail reason")
+            st.caption("Shows which single-fail reasons look interesting or dangerous.")
             df = query_df(SQL_SINGLE_FAIL_SUMMARY)
-            show_df(df, "Geen single fail data gevonden.")
+            show_df(df, "No single fail data found.")
 
-        elif research_view == "Competities":
-            st.markdown("### Resultaat per competitie")
-            st.caption("Alleen competities met minimaal 3 gesettelde picks.")
+        elif research_view == "Competitions":
+            st.markdown("### Results by competition")
+            st.caption("Only competitions with at least 3 settled picks.")
             df = query_df(SQL_COMPETITION_SUMMARY)
-            show_df(df, "Geen competitie-data gevonden.")
+            show_df(df, "No competition data found.")
 
         else:
-            st.markdown("### Resultaat per tier")
+            st.markdown("### Results by tier")
             df = query_df(SQL_TIER_SUMMARY)
-            show_df(df, "Nog geen tier-data gevonden.")
+            show_df(df, "No tier data found yet.")
 
     except Exception as exc:
         st.error("Research-data kon niet worden geladen.")
