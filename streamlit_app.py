@@ -641,7 +641,7 @@ def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> 
 
     st.altair_chart(
         hoofd_chart.properties(height=300),
-        use_container_width=True,
+        width='stretch',
     )
 
 # === BAR CHART: wekelijkse ROI ===
@@ -697,7 +697,7 @@ def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> 
 
     st.altair_chart(
         (bar_nullijn + bar_chart).properties(height=130),
-        use_container_width=True,
+        width='stretch',
     )
 
 def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:

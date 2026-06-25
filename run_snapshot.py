@@ -41,4 +41,21 @@ with open(LOG, "a", encoding="utf-8") as f:
 
     rc = proc.wait()
     f.write(f"\nExit code: {rc}\n")
+
+    # Refresh materialized views na snapshot zodat drift actueel is
+    if rc == 0:
+        f.write("[views] Refreshing materialized views...\n")
+        try:
+            import sys
+            ECI_ENGINE = os.path.join(BASE, "eci_engine")
+            if ECI_ENGINE not in sys.path:
+                sys.path.insert(0, ECI_ENGINE)
+            if BASE not in sys.path:
+                sys.path.insert(0, BASE)
+            from db import refresh_source_views
+            refresh_source_views()
+            f.write("[views] Refresh voltooid.\n")
+        except Exception as e:
+            f.write(f"[views][WARN] Refresh mislukt: {e}\n")
+
     f.write("------------------------------\n")
