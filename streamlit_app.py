@@ -538,6 +538,121 @@ def render_pick_summary(row: pd.Series) -> None:
     if parts:
         st.markdown(" ".join(parts))
 
+def render_week_overview(df: pd.DataFrame) -> None:
+    """Weekoverzicht met navigatie en Discord-export knop."""
+    if df.empty:
+        st.info("No settled picks yet.")
+        return
+
+    df = df.copy()
+    df["week_start"] = pd.to_datetime(df["week_start"])
+
+    # Beschikbare weken
+    weeks = sorted(df["week_start"].unique(), reverse=True)
+    week_labels = {
+        w: (
+            "This week" if i == 0
+            else f"Week of {pd.Timestamp(w).strftime('%d %b')}"
+        )
+        for i, w in enumerate(weeks)
+    }
+
+    selected_week = st.selectbox(
+        "Week",
+        options=weeks,
+        format_func=lambda w: week_labels[w],
+        index=0,
+    )
+
+    week_df = df[df["week_start"] == selected_week].copy()
+    week_end = pd.Timestamp(selected_week) + pd.Timedelta(days=6)
+
+    if week_df.empty:
+        st.info("No picks this week.")
+        return
+
+    # Statistieken
+    bets = len(week_df)
+    wins = (week_df["outcome"] == "WIN").sum()
+    losses = bets - wins
+    profit = week_df.apply(
+        lambda r: float(r["selected_odds"]) - 1 if r["outcome"] == "WIN" else -1.0,
+        axis=1,
+    ).sum()
+    roi = profit / bets * 100
+
+    # Header metrics
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Picks", bets)
+    col2.metric("Wins", wins)
+    col3.metric("Losses", losses)
+    col4.metric(
+        "Profit",
+        f"{profit:+.2f}u",
+        delta=None,
+    )
+    col5.metric("ROI", f"{roi:+.1f}%")
+
+    st.divider()
+
+    # Pick lijst
+    for _, r in week_df.iterrows():
+        is_win = r["outcome"] == "WIN"
+        color = "#22c55e" if is_win else "#ef4444"
+        icon = "✅" if is_win else "❌"
+        odds = float(r["selected_odds"]) if r["selected_odds"] else 0
+        profit_pick = odds - 1 if is_win else -1.0
+
+        c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1, 1, 1])
+        with c1:
+            st.markdown(
+                f'<span style="font-weight:600">'
+                f'{r["home_team"]} - {r["away_team"]}'
+                f'</span> '
+                f'<span class="bm-muted">· {r["competition"]}</span>',
+                unsafe_allow_html=True,
+            )
+        with c2:
+            tier = r.get("pick_tier", "")
+            st.markdown(
+                chip(f'{tier} {r["selection"]}', "good" if is_win else "bad"),
+                unsafe_allow_html=True,
+            )
+        with c3:
+            st.markdown(f'<span style="font-weight:600">@ {odds:.2f}</span>', unsafe_allow_html=True)
+        with c4:
+            st.markdown(
+                f'<span style="color:{color};font-weight:700">{icon} {r["outcome"]}</span>',
+                unsafe_allow_html=True,
+            )
+        with c5:
+            st.markdown(
+                f'<span style="color:{color};font-weight:600">{profit_pick:+.2f}u</span>',
+                unsafe_allow_html=True,
+            )
+
+    st.divider()
+
+    # Discord export tekst
+    week_label = f"{pd.Timestamp(selected_week).strftime('%d %b')} – {week_end.strftime('%d %b %Y')}"
+    lines = [f"📅 **Week of {week_label}**"]
+    lines.append(f"{bets} picks  •  {wins} wins  •  ROI {roi:+.1f}%  •  Profit {profit:+.2f} units\n")
+    for _, r in week_df.iterrows():
+        is_win = r["outcome"] == "WIN"
+        icon = "✅" if is_win else "❌"
+        odds = float(r["selected_odds"]) if r["selected_odds"] else 0
+        lines.append(
+            f'{icon} {r["home_team"]} - {r["away_team"]} '
+            f'| {r["selection"]} @ {odds:.2f} '
+            f'| {r["competition"]}'
+        )
+
+    discord_text = "\n".join(lines)
+
+    with st.expander("📋 Copy for Discord", expanded=False):
+        st.code(discord_text, language="text")
+        st.caption("Copy the text above and paste it into your Discord channel.")
+
 def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> None:
     """Toont cumulatieve ROI grafiek over tijd, met optionele A+ lijn."""
     if df.empty:
@@ -641,52 +756,39 @@ def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> 
 
     st.altair_chart(
         hoofd_chart.properties(height=300),
-        width='stretch',
+        use_container_width=True,
     )
 
-# === BAR CHART: wekelijkse ROI ===
-    df_week = df.copy()
-    df_week["week"] = pd.to_datetime(df_week["settle_date"]).dt.to_period("W").apply(
-        lambda p: p.start_time
-    )
-    df_week = df_week.groupby("week").agg(
-        bets=("bets", "sum"),
-        weekly_profit=("daily_profit", "sum"),
-    ).reset_index()
-    df_week["roi_pct"] = (df_week["weekly_profit"] / df_week["bets"] * 100).round(1)
-    df_week["week"] = pd.to_datetime(df_week["week"])
+    # === BAR CHART: dagelijkse profit ===
+    # Bereken schaal op basis van typische waarden (geen outliers)
+    p10 = float(df["daily_profit"].quantile(0.10))
+    p90 = float(df["daily_profit"].quantile(0.90))
+    marge = max(abs(p10), abs(p90)) * 1.5 or 5.0
 
-    # Begrens y-as op basis van typische weken, niet de uitschieters
-    y_max = float(df_week["weekly_profit"].quantile(0.85)) * 1.5
-    y_min = float(df_week["weekly_profit"].quantile(0.15)) * 1.5
-    y_max = max(y_max, 3.0)
-    y_min = min(y_min, -3.0)
-
-    bar_chart = alt.Chart(df_week).mark_bar(
-        opacity=0.85,
-        cornerRadiusTopLeft=3,
-        cornerRadiusTopRight=3,
+    bar_chart = alt.Chart(df).mark_bar(
+        opacity=0.8,
+        cornerRadiusTopLeft=2,
+        cornerRadiusTopRight=2,
     ).encode(
         x=alt.X(
-            "week:T",
-            title="Week",
+            "settle_date:T",
+            title="Date",
             axis=alt.Axis(format="%d %b"),
         ),
         y=alt.Y(
-            "weekly_profit:Q",
-            title="Weekly profit (units)",
-            scale=alt.Scale(domain=[y_min, y_max], clamp=True),
+            "daily_profit:Q",
+            title="Daily profit",
+            scale=alt.Scale(domain=[-marge, marge]),
         ),
         color=alt.condition(
-            alt.datum.weekly_profit >= 0,
+            alt.datum.daily_profit >= 0,
             alt.value("#22c55e"),
             alt.value("#ef4444"),
         ),
         tooltip=[
-            alt.Tooltip("week:T", title="Week of", format="%d %b %Y"),
-            alt.Tooltip("bets:Q", title="Bets"),
-            alt.Tooltip("weekly_profit:Q", title="Profit", format="+.2f"),
-            alt.Tooltip("roi_pct:Q", title="ROI %", format="+.1f"),
+            alt.Tooltip("settle_date:T", title="Date", format="%d %b %Y"),
+            alt.Tooltip("bets:Q", title="Bets settled"),
+            alt.Tooltip("daily_profit:Q", title="Daily profit", format="+.2f"),
         ],
     )
 
@@ -696,8 +798,8 @@ def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> 
     ).encode(y="y:Q")
 
     st.altair_chart(
-        (bar_nullijn + bar_chart).properties(height=130),
-        width='stretch',
+        (bar_nullijn + bar_chart).properties(height=110),
+        use_container_width=True,
     )
 
 def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
@@ -755,7 +857,16 @@ def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
             with top_mid:
                 st.markdown(chip(badge, kind) + " " + chip(str(pick_type), "neutral"), unsafe_allow_html=True)
             with top_right:
-                st.metric("Advice", selection)
+                outcome = r.get("outcome")
+                score = r.get("score")
+                if outcome == "WIN":
+                    st.metric("Advice", selection)
+                    st.markdown(f'<div style="color:#22c55e;font-weight:700;font-size:1.1rem">✅ WIN</div>', unsafe_allow_html=True)
+                elif outcome == "LOSS":
+                    st.metric("Advice", selection)
+                    st.markdown(f'<div style="color:#ef4444;font-weight:700;font-size:1.1rem">❌ LOSS</div>', unsafe_allow_html=True)
+                else:
+                    st.metric("Advice", selection)
 
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Odds", fmt_num(r.get("selected_odds"), 2))
@@ -826,33 +937,33 @@ def fail_explanation(row: pd.Series) -> str:
 
     if reason == "value":
         margin = row.get("value_margin", row.get("single_fail_margin"))
-        return f"Value misses the threshold by {fmt_num(abs(margin), 4)}."
+        return f"Value mist de grens met {fmt_num(abs(margin), 4)}."
 
     if reason == "prob":
         margin = row.get("prob_margin", row.get("single_fail_margin"))
-        return f"Probability is {fmt_num(abs(margin), 4)} below the minimum threshold."
+        return f"Probability zit {fmt_num(abs(margin), 4)} onder de minimumgrens."
 
     if reason == "odds":
         margin = row.get("odds_margin", row.get("single_fail_margin"))
-        return f"Odds fall outside the allowed range by {fmt_num(margin, 4)}."
+        return f"Odds vallen buiten de toegestane range met marge {fmt_num(margin, 4)}."
 
     if reason == "drift":
         drift = row.get("selected_drift", row.get("drift_pct"))
-        return f"Drift fails: market moving against or insufficient support. Drift: {fmt_pct(drift)}."
+        return f"Drift faalt: markt beweegt tegen of onvoldoende mee. Drift: {fmt_pct(drift)}."
 
     if reason == "snap":
         needed = row.get("snap_needed")
-        return f"Not enough snapshots yet. Still needed: {fmt_num(needed, 0)}."
+        return f"Te weinig snapshots. Nog nodig: {fmt_num(needed, 0)}."
 
     if reason == "rating":
         margin = row.get("rating_margin", row.get("single_fail_margin"))
-        return f"Rating gap misses the threshold by {fmt_num(abs(margin), 2)}."
+        return f"Rating gap mist de grens met {fmt_num(abs(margin), 2)}."
 
     if reason == "edge":
         margin = row.get("edge_margin", row.get("single_fail_margin"))
-        return f"Home edge fails. Edge margin: {fmt_num(margin, 2)}."
+        return f"Home edge faalt. Edge margin: {fmt_num(margin, 2)}."
 
-    return "No specific explanation available."
+    return "Geen specifieke uitleg beschikbaar."
 
 
 def render_research_cards(df: pd.DataFrame, kind: str, empty_text: str) -> None:
@@ -895,9 +1006,9 @@ def render_research_cards(df: pd.DataFrame, kind: str, empty_text: str) -> None:
             mid[1].metric("Margin", fmt_num(r.get("single_fail_margin"), 4))
             mid[2].metric("Snapshots", metric_value(r.get("n_snapshots")))
             mid[3].metric("Drift", fmt_pct(drift))
-            mid[4].metric("Snaps needed", metric_value(r.get("snap_needed")))
+            mid[4].metric("Snap nodig", metric_value(r.get("snap_needed")))
 
-            st.markdown(f"**Analysis:** {fail_explanation(r)}")
+            st.markdown(f"**Interpretatie:** {fail_explanation(r)}")
 
             margin_cols = [
                 "prob_margin",
@@ -916,10 +1027,10 @@ def render_research_cards(df: pd.DataFrame, kind: str, empty_text: str) -> None:
                 )
                 margin_df["marge"] = pd.to_numeric(margin_df["marge"], errors="coerce").round(4)
 
-                with st.expander("Margin details", expanded=False):
+                with st.expander("Marge-details", expanded=False):
                     st.dataframe(margin_df, width="stretch", hide_index=True)
 
-            with st.expander("All details", expanded=False):
+            with st.expander("Alle details", expanded=False):
                 st.dataframe(pd.DataFrame([r]).pipe(prepare_display_df), width="stretch", hide_index=True)
 
 # -----------------------------------------------------------------------------
@@ -1251,6 +1362,43 @@ FROM cumulative
 ORDER BY settle_date;
 """
 
+SQL_WEEK_SUMMARY = """
+WITH weeks AS (
+    SELECT DISTINCT
+        DATE_TRUNC('week', settled_at AT TIME ZONE 'Europe/Amsterdam')::date AS week_start
+    FROM public.picks_evaluated
+    WHERE outcome IN ('WIN', 'LOSS')
+      AND settled_at IS NOT NULL
+    ORDER BY week_start DESC
+    LIMIT 12
+),
+settled AS (
+    SELECT DISTINCT ON (match_id)
+        DATE_TRUNC('week', settled_at AT TIME ZONE 'Europe/Amsterdam')::date AS week_start,
+        match_id,
+        competition,
+        home_team,
+        away_team,
+        selection,
+        pick_tier,
+        outcome,
+        CASE
+            WHEN selection = 'HOME' THEN odds_home
+            WHEN selection = 'AWAY' THEN odds_away
+            WHEN selection = 'DRAW' THEN odds_draw
+        END AS selected_odds,
+        DATE(settled_at AT TIME ZONE 'Europe/Amsterdam') AS settle_date
+    FROM public.picks_evaluated
+    WHERE outcome IN ('WIN', 'LOSS')
+      AND settled_at IS NOT NULL
+    ORDER BY match_id, settled_at DESC
+)
+SELECT s.*
+FROM settled s
+JOIN weeks w ON w.week_start = s.week_start
+ORDER BY s.week_start DESC, s.settle_date ASC, s.competition;
+"""
+
 SQL_TIER_SUMMARY = """
 WITH settled AS (
     SELECT
@@ -1306,30 +1454,36 @@ LIMIT 100;
 """
 
 SQL_SINGLE_FAIL = """
-SELECT
-    run_id,
-    NULLIF(date::text, '')::date AS date,
-    competition,
-    home_team,
-    away_team,
-    side,
-    fail_reason,
-    odds,
-    probability,
-    value_score,
-    single_fail_raw_strength,
-    single_fail_adj_strength,
-    single_fail_calibrated_strength,
-    single_fail_margin,
-    snap_needed,
-    n_snapshots,
-    drift_pct,
-    outcome,
-    score
-FROM public.picks_single_fail_candidates
-WHERE side IS NOT NULL
-ORDER BY run_id DESC, date ASC NULLS LAST, single_fail_margin DESC NULLS LAST
-LIMIT 100;
+WITH latest_per_match AS (
+    SELECT DISTINCT ON (match_id)
+        run_id,
+        match_id,
+        NULLIF(date::text, '')::date AS date,
+        competition,
+        home_team,
+        away_team,
+        side,
+        fail_reason,
+        odds,
+        probability,
+        value_score,
+        single_fail_raw_strength,
+        single_fail_adj_strength,
+        single_fail_calibrated_strength,
+        single_fail_margin,
+        snap_needed,
+        n_snapshots,
+        drift_pct,
+        outcome,
+        score
+    FROM public.picks_single_fail_candidates
+    WHERE side IS NOT NULL
+    ORDER BY match_id, run_id DESC
+)
+SELECT *
+FROM latest_per_match
+WHERE date >= CURRENT_DATE
+ORDER BY date ASC, single_fail_margin DESC NULLS LAST;
 """
 
 SQL_NEAR_MISS_OPEN_CARDS = """
@@ -1641,7 +1795,7 @@ with st.sidebar:
 
     st.divider()
 
-tab_status, tab_picks, tab_research, tab_rules, tab_debug = st.tabs(["Status", "Picks", "Research", "Regels", "Debug"])
+tab_status, tab_picks, tab_research, tab_rules, tab_debug = st.tabs(["Status", "Picks", "Analysis", "Rules", "Debug"])
 
 with tab_status:
     st.subheader("Status")
@@ -1705,7 +1859,15 @@ with tab_status:
             st.write(f"**Generated at:** {last.get('generated_at', '—')}")
             with st.expander("Recente run-id's en aantallen", expanded=False):
                 show_df(query_df(SQL_RECENT_RUNS_COMPACT), "Geen recente runs gevonden.")
+        st.subheader("Weekly results")
+        try:
+            week_df = query_df(SQL_WEEK_SUMMARY)
+            render_week_overview(week_df)
+        except Exception as exc:
+            st.warning("Could not load weekly overview.")
+            st.exception(exc)
 
+        st.divider()
         st.subheader("Performance over time")
         try:
             roi_time = query_df(SQL_ROI_OVER_TIME)
@@ -1817,18 +1979,18 @@ with tab_picks:
                             )
                         with h2:
                             st.markdown(
-                                chip("Almost a pick", "warn") + " " + chip(label_tekst, label_kind),
+                                chip("Bijna een pick", "warn") + " " + chip(label_tekst, label_kind),
                                 unsafe_allow_html=True,
                             )
                         with h3:
-                            st.metric("Advice", side)
+                            st.metric("Advies", side)
 
                         c1, c2, c3, c4, c5 = st.columns(5)
                         c1.metric("Odds", fmt_num(odds, 2))
-                        c2.metric("Win prob", fmt_pct(prob))
+                        c2.metric("ECI-kans", fmt_pct(prob))
                         c3.metric("Value", fmt_num(value, 3))
                         c4.metric("Strength", fmt_num(strength, 2))
-                        c5.metric("Margin", fmt_num(margin, 4))
+                        c5.metric("Marge", fmt_num(margin, 4))
 
                         # Leesbare uitleg
                         uitleg = fail_explanation(r)
@@ -1839,22 +2001,20 @@ with tab_picks:
 
                         st.info(f"💡 {uitleg}")
 
-                with st.expander("Table view", expanded=False):
-                    show_df(df, "No single fails found.")
+                with st.expander("Tabelweergave", expanded=False):
+                    show_df(df, "Geen single fails gevonden.")
     except Exception as exc:
         st.error("Picks konden niet worden geladen.")
         st.exception(exc)
 
 with tab_research:
-    st.subheader("Research")
+    st.subheader("Analysis")
 
     research_view = st.radio(
-        "Onderdeel",
+        "Section",
         [
-            "Near miss opportunities",
-            "Single fail opportunities",
-            "Near misses",
-            "Single fails",
+            "Near miss history",
+            "Single fail history",
             "Competitions",
             "Tier results",
         ],
@@ -1862,25 +2022,13 @@ with tab_research:
     )
 
     try:
-        if research_view == "Near miss opportunities":
-            st.markdown("### Open near misses with potential")
-            st.caption("Upcoming near misses, sorted by strength and margin.")
-            df = query_df(SQL_NEAR_MISS_OPEN_CARDS)
-            render_research_cards(df, "near_miss", "No open near misses found.")
-
-        elif research_view == "Single fail opportunities":
-            st.markdown("### Open single fails with potential")
-            st.caption("Upcoming single fails, sorted by calibrated strength and margin.")
-            df = query_df(SQL_SINGLE_FAIL_OPEN_CARDS)
-            render_research_cards(df, "single_fail", "No open single fails found.")
-
-        elif research_view == "Near misses":
+        if research_view == "Near miss history":
             st.markdown("### Near misses by fail reason")
             st.caption("Shows which near-picks occur most often and how they perform historically.")
             df = query_df(SQL_NEAR_MISS_SUMMARY)
             show_df(df, "No near miss data found.")
 
-        elif research_view == "Single fails":
+        elif research_view == "Single fail history":
             st.markdown("### Single fails by fail reason")
             st.caption("Shows which single-fail reasons look interesting or dangerous.")
             df = query_df(SQL_SINGLE_FAIL_SUMMARY)
@@ -1898,11 +2046,11 @@ with tab_research:
             show_df(df, "No tier data found yet.")
 
     except Exception as exc:
-        st.error("Research-data kon niet worden geladen.")
+        st.error("Could not load analysis data.")
         st.exception(exc)
 
 with tab_rules:
-    st.subheader("Actieve regels uit config.py")
+    st.subheader("Active rules from config.py")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Min prob", ECI_RULE_PARAMS.get("min_prob"))
