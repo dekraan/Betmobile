@@ -181,28 +181,34 @@ def age_text(dt_value):
         if pd.isna(dt):
             return "?"
 
+        # Converteer naar lokale tijd voor correcte vergelijking
         if dt.tzinfo is not None:
-            dt = dt.tz_convert(None)
-
+            dt = dt.tz_convert('Europe/Amsterdam').tz_localize(None)
+        
         diff = datetime.now() - dt.to_pydatetime()
         minutes = int(diff.total_seconds() / 60)
 
         if minutes < 0:
             return "net"
-
         if minutes < 60:
-            return f"{minutes} min geleden"
-
+            return f"{minutes} min ago"
         hours = minutes // 60
-
         if hours < 24:
-            return f"{hours} uur geleden"
-
+            return f"{hours} hr ago"
         days = hours // 24
-        return f"{days} dag(en) geleden"
+        return f"{days} day(s) ago"
 
     except Exception:
         return "?"
+
+def to_local(dt_value) -> str:
+    """Converteer een timestamp naar lokale tijd (Europe/Amsterdam), ongeacht of hij tz-aware is."""
+    dt = pd.to_datetime(dt_value, errors="coerce")
+    if pd.isna(dt):
+        return "—"
+    if dt.tzinfo is None:
+        dt = dt.tz_localize('UTC')
+    return dt.tz_convert('Europe/Amsterdam').strftime("%H:%M")
 
 def prepare_display_df(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
@@ -756,7 +762,7 @@ def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> 
 
     st.altair_chart(
         hoofd_chart.properties(height=300),
-        use_container_width=True,
+        width='stretch',
     )
 
     # === BAR CHART: dagelijkse profit ===
@@ -799,7 +805,7 @@ def render_roi_chart(df: pd.DataFrame, df_aplus: pd.DataFrame | None = None) -> 
 
     st.altair_chart(
         (bar_nullijn + bar_chart).properties(height=110),
-        use_container_width=True,
+        width='stretch',
     )
 
 def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
@@ -1430,27 +1436,58 @@ ORDER BY
 """
 
 SQL_NEAR_MISS = """
-SELECT
-    run_id,
-    NULLIF(date::text, '')::date AS date,
-    competition,
-    home_team,
-    away_team,
-    side,
-    fail_reason,
-    selected_odds,
-    selected_prob,
-    selected_value,
-    selected_drift,
-    strength,
-    single_fail_margin,
-    snap_needed,
-    outcome,
-    score
-FROM public.picks_near_miss_candidates
-WHERE side IS NOT NULL
-ORDER BY run_id DESC, date ASC NULLS LAST, single_fail_margin DESC NULLS LAST
-LIMIT 100;
+WITH latest_per_match AS (
+    SELECT DISTINCT ON (nm.match_id)
+        nm.run_id,
+        nm.match_id,
+        NULLIF(nm.date::text, '')::date AS date,
+        nm.competition,
+        nm.home_team,
+        nm.away_team,
+        nm.side,
+        nm.fail_reason,
+        nm.selected_odds,
+        nm.selected_prob,
+        nm.selected_value,
+        nm.selected_drift,
+        nm.single_fail_margin,
+        nm.prob_margin,
+        nm.value_margin,
+        nm.odds_margin,
+        nm.drift_margin,
+        nm.rating_margin,
+        nm.edge_margin,
+        nm.snap_needed,
+        nm.outcome,
+        nm.score,
+        COALESCE(
+            NULLIF(nm.strength, 0),
+            CASE
+                WHEN nm.side = 'HOME' THEN mms.raw_strength_home_all
+                WHEN nm.side = 'AWAY' THEN mms.raw_strength_away_all
+            END,
+            CASE
+                WHEN nm.side = 'HOME' THEN mms.rule_strength_calibrated_home
+                WHEN nm.side = 'AWAY' THEN mms.rule_strength_calibrated_away
+            END
+        ) AS strength,
+        mms.n_snapshots
+    FROM public.picks_near_miss_candidates nm
+    LEFT JOIN public.model_match_snapshots mms
+        ON mms.run_id = nm.run_id
+       AND mms.match_id = nm.match_id
+    WHERE nm.side IS NOT NULL
+      AND NULLIF(nm.date::text, '')::date >= CURRENT_DATE
+      AND nm.match_id NOT IN (
+          SELECT DISTINCT match_id 
+          FROM public.picks_evaluated 
+          WHERE outcome IS NULL
+      )
+      AND nm.run_id = (SELECT MAX(run_id) FROM public.picks_near_miss_candidates)
+)
+SELECT *
+FROM latest_per_match
+ORDER BY date ASC, single_fail_margin DESC NULLS LAST;
 """
 
 SQL_SINGLE_FAIL = """
@@ -1483,7 +1520,97 @@ WITH latest_per_match AS (
 SELECT *
 FROM latest_per_match
 WHERE date >= CURRENT_DATE
+  AND run_id = (SELECT MAX(run_id) FROM public.picks_single_fail_candidates)
 ORDER BY date ASC, single_fail_margin DESC NULLS LAST;
+"""
+
+SQL_WATCHLIST = """
+WITH latest_run_nm AS (
+    SELECT MAX(run_id) AS max_run FROM public.picks_near_miss_candidates
+),
+latest_run_sf AS (
+    SELECT MAX(run_id) AS max_run FROM public.picks_single_fail_candidates
+),
+open_picks AS (
+    SELECT DISTINCT match_id FROM public.picks_evaluated WHERE outcome IS NULL
+),
+near_misses AS (
+    SELECT
+        nm.match_id,
+        NULLIF(nm.date::text, '')::date AS date,
+        nm.competition,
+        nm.home_team,
+        nm.away_team,
+        nm.side,
+        nm.fail_reason,
+        nm.selected_odds AS odds,
+        nm.selected_prob AS probability,
+        nm.selected_value AS value_score,
+        nm.single_fail_margin AS margin,
+        nm.snap_needed,
+        nm.n_snapshots,
+        COALESCE(
+            NULLIF(nm.strength, 0),
+            CASE WHEN nm.side = 'HOME' THEN mms.raw_strength_home_all
+                 WHEN nm.side = 'AWAY' THEN mms.raw_strength_away_all END,
+            CASE WHEN nm.side = 'HOME' THEN mms.rule_strength_calibrated_home
+                 WHEN nm.side = 'AWAY' THEN mms.rule_strength_calibrated_away END
+        ) AS strength,
+        'near_miss' AS source
+    FROM public.picks_near_miss_candidates nm
+    LEFT JOIN public.model_match_snapshots mms
+        ON mms.run_id = nm.run_id AND mms.match_id = nm.match_id
+    WHERE nm.side IS NOT NULL
+      AND NULLIF(nm.date::text, '')::date >= CURRENT_DATE
+      AND nm.run_id = (SELECT max_run FROM latest_run_nm)
+      AND nm.match_id NOT IN (SELECT match_id FROM open_picks)
+),
+single_fails AS (
+    SELECT
+        sf.match_id,
+        NULLIF(sf.date::text, '')::date AS date,
+        sf.competition,
+        sf.home_team,
+        sf.away_team,
+        sf.side,
+        sf.fail_reason,
+        sf.odds,
+        sf.probability,
+        sf.value_score,
+        sf.single_fail_margin AS margin,
+        sf.snap_needed,
+        sf.n_snapshots,
+        sf.single_fail_raw_strength AS strength,
+        'single_fail' AS source
+    FROM public.picks_single_fail_candidates sf
+    WHERE sf.side IS NOT NULL
+      AND NULLIF(sf.date::text, '')::date >= CURRENT_DATE
+      AND sf.run_id = (SELECT max_run FROM latest_run_sf)
+      AND sf.match_id NOT IN (SELECT match_id FROM open_picks)
+),
+combined AS (
+    SELECT * FROM near_misses
+    UNION
+    SELECT * FROM single_fails
+)
+SELECT DISTINCT ON (match_id, side)
+    match_id,
+    date,
+    competition,
+    home_team,
+    away_team,
+    side,
+    fail_reason,
+    odds,
+    probability,
+    value_score,
+    margin,
+    snap_needed,
+    n_snapshots,
+    strength,
+    source
+FROM combined
+ORDER BY match_id, side, margin DESC NULLS LAST;
 """
 
 SQL_NEAR_MISS_OPEN_CARDS = """
@@ -1821,16 +1948,16 @@ with tab_status:
 
     c1.metric(
         "Odds snapshot",
-        pd.to_datetime(odds_time).strftime("%H:%M"),
+        to_local(odds_time),
         age_text(odds_time),
     )
 
     c2.metric(
         "Model run",
-        pd.to_datetime(model_time).strftime("%H:%M"),
+        to_local(model_time),
         age_text(model_time),
     )
-
+    
     c3.metric(
         "Open picks",
         len(open_picks),
@@ -1911,7 +2038,7 @@ with tab_picks:
 
     view = st.radio(
         "View",
-        ["Today + tomorrow", "Open picks", "Near misses", "Single fails", "Last 50"],
+        ["Today + tomorrow", "Open picks", "Watchlist", "Last 50"],
         horizontal=True,
     )
 
@@ -1931,26 +2058,22 @@ with tab_picks:
             render_pick_cards(df, "No picks found.")
             with st.expander("Table view", expanded=False):
                 show_df(df, "No picks found.")
-        elif view == "Near misses":
-            df = query_df(SQL_NEAR_MISS)
-            show_df(df, "No near misses found.")
-        else:
-            df = query_df(SQL_SINGLE_FAIL)
+        elif view == "Watchlist":
+            df = query_df(SQL_WATCHLIST)
             if df.empty:
-                st.info("Geen single fails gevonden.")
+                st.info("No upcoming matches on the watchlist.")
             else:
-                st.caption(f"{len(df)} matches that missed on exactly one filter.")
+                st.caption(f"{len(df)} matches almost made the cut — sorted by how close they are.")
                 for _, r in df.iterrows():
                     reason = str(r.get("fail_reason", "—")).lower()
                     side = r.get("side", "—")
-                    odds = r.get("odds", r.get("selected_odds"))
-                    prob = r.get("probability", r.get("selected_prob"))
-                    value = r.get("value_score", r.get("selected_value"))
-                    strength = r.get("single_fail_raw_strength", r.get("strength"))
-                    margin = r.get("single_fail_margin")
+                    odds = r.get("odds")
+                    prob = r.get("probability")
+                    value = r.get("value_score")
+                    strength = r.get("strength")
+                    margin = r.get("margin")
                     snap_needed = r.get("snap_needed")
 
-                    # Label per reden
                     reden_labels = {
                         "snap":   ("🕐 Waiting for snapshots", "warn"),
                         "value":  ("📉 Value just below threshold", "warn"),
@@ -1979,32 +2102,25 @@ with tab_picks:
                             )
                         with h2:
                             st.markdown(
-                                chip("Bijna een pick", "warn") + " " + chip(label_tekst, label_kind),
+                                chip("Almost a pick", "warn") + " " + chip(label_tekst, label_kind),
                                 unsafe_allow_html=True,
                             )
                         with h3:
-                            st.metric("Advies", side)
+                            st.metric("Side", side)
 
                         c1, c2, c3, c4, c5 = st.columns(5)
                         c1.metric("Odds", fmt_num(odds, 2))
-                        c2.metric("ECI-kans", fmt_pct(prob))
+                        c2.metric("Win prob", fmt_pct(prob))
                         c3.metric("Value", fmt_num(value, 3))
                         c4.metric("Strength", fmt_num(strength, 2))
-                        c5.metric("Marge", fmt_num(margin, 4))
+                        c5.metric("Margin", fmt_num(margin, 4))
 
-                        # Leesbare uitleg
-                        uitleg = fail_explanation(r)
-                        if reason == "snap" and snap_needed:
-                            uitleg += f" Check back after the next snapshot run."
-                        elif reason == "value" and margin is not None:
-                            uitleg += f" Small gap — could flip if odds move."
+                        st.info(f"💡 {near_miss_explanation(r)}")
 
-                        st.info(f"💡 {uitleg}")
-
-                with st.expander("Tabelweergave", expanded=False):
-                    show_df(df, "Geen single fails gevonden.")
+                with st.expander("Table view", expanded=False):
+                    show_df(df, "No watchlist items found.")
     except Exception as exc:
-        st.error("Picks konden niet worden geladen.")
+        st.error("Could not load picks.")
         st.exception(exc)
 
 with tab_research:
