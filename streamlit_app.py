@@ -943,33 +943,59 @@ def fail_explanation(row: pd.Series) -> str:
 
     if reason == "value":
         margin = row.get("value_margin", row.get("single_fail_margin"))
-        return f"Value mist de grens met {fmt_num(abs(margin), 4)}."
+        return f"Value misses the threshold by {fmt_num(abs(margin), 4)}."
 
     if reason == "prob":
         margin = row.get("prob_margin", row.get("single_fail_margin"))
-        return f"Probability zit {fmt_num(abs(margin), 4)} onder de minimumgrens."
+        return f"Probability is {fmt_num(abs(margin), 4)} below the minimum threshold."
 
     if reason == "odds":
         margin = row.get("odds_margin", row.get("single_fail_margin"))
-        return f"Odds vallen buiten de toegestane range met marge {fmt_num(margin, 4)}."
+        return f"Odds fall outside the allowed range by {fmt_num(margin, 4)}."
 
     if reason == "drift":
         drift = row.get("selected_drift", row.get("drift_pct"))
-        return f"Drift faalt: markt beweegt tegen of onvoldoende mee. Drift: {fmt_pct(drift)}."
+        return f"Drift fails: market moving against or insufficient support. Drift: {fmt_pct(drift)}."
 
     if reason == "snap":
         needed = row.get("snap_needed")
-        return f"Te weinig snapshots. Nog nodig: {fmt_num(needed, 0)}."
+        return f"Not enough snapshots yet. Still needed: {fmt_num(needed, 0)}."
 
     if reason == "rating":
         margin = row.get("rating_margin", row.get("single_fail_margin"))
-        return f"Rating gap mist de grens met {fmt_num(abs(margin), 2)}."
+        return f"Rating gap misses the threshold by {fmt_num(abs(margin), 2)}."
 
     if reason == "edge":
         margin = row.get("edge_margin", row.get("single_fail_margin"))
-        return f"Home edge faalt. Edge margin: {fmt_num(margin, 2)}."
+        return f"Home edge fails. Edge margin: {fmt_num(margin, 2)}."
 
-    return "Geen specifieke uitleg beschikbaar."
+    return "No specific explanation available."
+
+
+def near_miss_explanation(row: pd.Series) -> str:
+    """Short explanation of why this match just missed being a pick."""
+    reason = str(row.get("fail_reason", "")).lower()
+    margin = row.get("margin", row.get("single_fail_margin"))
+    snap_needed = row.get("snap_needed")
+    prob = row.get("probability", row.get("selected_prob"))
+    odds = row.get("odds", row.get("selected_odds"))
+
+    if reason == "snap":
+        needed = int(snap_needed) if snap_needed and not pd.isna(snap_needed) else "?"
+        return f"Just {needed} more snapshot(s) needed — check back later today."
+    if reason == "value":
+        return f"Value is {fmt_num(abs(margin) if margin else 0, 4)} below threshold — odds may still move."
+    if reason == "prob":
+        return f"Win probability ({fmt_pct(prob)}) just below minimum — close call."
+    if reason == "odds":
+        return f"Odds ({fmt_num(odds, 2)}) fall just outside the allowed range."
+    if reason == "rating":
+        return f"Rating gap just below minimum — teams closer in quality than we'd like."
+    if reason == "drift":
+        return f"Market moving the wrong way — wait for next snapshot to see if it recovers."
+    if reason == "edge":
+        return f"Home edge check failed."
+    return f"Missed on: {reason}."
 
 
 def render_research_cards(df: pd.DataFrame, kind: str, empty_text: str) -> None:
@@ -1548,7 +1574,7 @@ near_misses AS (
         nm.selected_value AS value_score,
         nm.single_fail_margin AS margin,
         nm.snap_needed,
-        nm.n_snapshots,
+        mms.n_snapshots,
         COALESCE(
             NULLIF(nm.strength, 0),
             CASE WHEN nm.side = 'HOME' THEN mms.raw_strength_home_all
