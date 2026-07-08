@@ -554,14 +554,21 @@ def render_week_overview(df: pd.DataFrame) -> None:
     df["week_start"] = pd.to_datetime(df["week_start"])
 
     # Beschikbare weken
+    import datetime
+    current_week_start = pd.Timestamp(
+        datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday())
+    )
+
     weeks = sorted(df["week_start"].unique(), reverse=True)
-    week_labels = {
-        w: (
-            "This week" if i == 0
-            else f"Week of {pd.Timestamp(w).strftime('%d %b')}"
-        )
-        for i, w in enumerate(weeks)
-    }
+    week_labels = {}
+    for w in weeks:
+        ts = pd.Timestamp(w)
+        if ts == current_week_start:
+            week_labels[w] = f"This week ({ts.strftime('%d %b')})"
+        elif ts == current_week_start - pd.Timedelta(weeks=1):
+            week_labels[w] = f"Last week ({ts.strftime('%d %b')})"
+        else:
+            week_labels[w] = f"Week of {ts.strftime('%d %b')}"
 
     selected_week = st.selectbox(
         "Week",
@@ -620,8 +627,9 @@ def render_week_overview(df: pd.DataFrame) -> None:
             )
         with c2:
             tier = r.get("pick_tier", "")
+            tier_kind = "good" if tier in ("A+", "A") else "warn" if tier in ("A-", "B") else "neutral"
             st.markdown(
-                chip(f'{tier} {r["selection"]}', "good" if is_win else "bad"),
+                chip(f'{tier}', tier_kind) + " " + chip(r["selection"], "good" if is_win else "bad"),
                 unsafe_allow_html=True,
             )
         with c3:

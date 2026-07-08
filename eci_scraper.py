@@ -123,6 +123,13 @@ def normalize_score(score):
     return f"{m.group(1)}-{m.group(2)}" if m else None
 
 
+# Handmatige correcties voor teamnamen die de bron met '?' aanlevert en die
+# (nog) niet correct in de database staan. Sleutel = naam zoals gescraped.
+MANUAL_NAME_FIXES = {
+    # 'N?mme Kalju': 'Nõmme Kalju',
+}
+
+
 class ECIScraper:
     def __init__(self):
         self.url = 'https://www.euroclubindex.com/match-odds/'
@@ -132,6 +139,10 @@ class ECIScraper:
         
         # Database tabel aanmaken als die niet bestaat
         self.create_table()
+
+        # Bekende (correcte) teamnamen uit de database, gebruikt om namen te
+        # repareren die de bron met '?' i.p.v. diakrieten aanlevert.
+        self.known_team_names = self.load_known_team_names()
 
     def parse_date(self, raw_date):
         """
@@ -219,6 +230,53 @@ class ECIScraper:
                 cursor.execute(create_table_query)
                 conn.commit()
 
+    def load_known_team_names(self):
+        """Laad alle eerder correct opgeslagen teamnamen uit de database."""
+        names = set()
+        try:
+            with psycopg2.connect(**DB_CONFIG) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT DISTINCT home_team FROM public.eci_data
+                        UNION
+                        SELECT DISTINCT away_team FROM public.eci_data
+                    """)
+                    names = {row[0] for row in cursor.fetchall()
+                             if row[0] and "?" not in row[0]}
+            logger.info(f"{len(names)} bekende teamnamen geladen voor naamreparatie")
+        except Exception:
+            logger.exception("Kon bekende teamnamen niet laden; naamreparatie beperkt tot MANUAL_NAME_FIXES")
+        return names
+
+    def repair_team_name(self, name, competition_name):
+        """
+        De bron levert soms teamnamen waarin niet-ASCII tekens door '?' zijn
+        vervangen (bijv. 'BK H?cken' i.p.v. 'BK Häcken'). Elke '?' staat voor
+        precies één teken, dus we matchen de naam als patroon tegen bekende
+        correcte namen uit de database. Bij precies één kandidaat repareren we;
+        anders None (rij wordt overgeslagen).
+        """
+        if "?" not in name:
+            return name
+
+        if name in MANUAL_NAME_FIXES:
+            fixed = MANUAL_NAME_FIXES[name]
+            logger.info(f"Teamnaam gerepareerd (handmatig) in {competition_name}: '{name}' -> '{fixed}'")
+            return fixed
+
+        pattern = re.compile("^" + re.escape(name).replace(r"\?", ".") + "$")
+        candidates = [n for n in self.known_team_names if pattern.match(n)]
+
+        if len(candidates) == 1:
+            logger.info(f"Teamnaam gerepareerd in {competition_name}: '{name}' -> '{candidates[0]}'")
+            return candidates[0]
+
+        logger.warning(
+            f"Onherstelbare teamnaam in {competition_name}: '{name}' "
+            f"({len(candidates)} kandidaten) - rij overgeslagen"
+        )
+        return None
+
     def clean_percentage(self, value):
         """Convert percentage string to float and round to 5 decimal places"""
         if pd.isna(value):
@@ -285,15 +343,6 @@ class ECIScraper:
                     home_team = re.sub(r'\([-]?\d+\)', '', home_team_full).strip()
                     home_rating = home_rating_match.group(1) if home_rating_match else 'N/A'
 
-                    # Bescherming tegen encoding-fouten zoals N?mme, BK H?cken, Brei?ablik.
-                    # Als Selenium een teamnaam met '?' teruggeeft, slaan we deze rij niet op.
-                    if "?" in home_team or "?" in away_team:
-                        logger.warning(
-                            f"Skipping suspicious encoding row in {competition_name}: "
-                            f"{date} | {home_team} - {away_team}"
-                        )
-                        continue
-                        
                     # Away team
                     away_team_full = match.find_element(
                         By.CSS_SELECTOR, 
@@ -302,6 +351,15 @@ class ECIScraper:
                     away_rating_match = re.search(r'\(([-]?\d+)\)', away_team_full)
                     away_team = re.sub(r'\([-]?\d+\)', '', away_team_full).strip()
                     away_rating = away_rating_match.group(1) if away_rating_match else 'N/A'
+
+                    # De bron (legacy Infostrada-backend) levert soms namen met '?'
+                    # i.p.v. diakrieten (N?mme, BK H?cken, Brei?ablik). Repareer
+                    # o.b.v. bekende namen; lukt dat niet, sla de rij over.
+                    home_team = self.repair_team_name(home_team, competition_name)
+                    away_team = self.repair_team_name(away_team, competition_name)
+                    if home_team is None or away_team is None:
+                        continue
+
 
                     # Score
                     score_elements = match.find_elements(By.CLASS_NAME, 'module-match-odds__item-score')
