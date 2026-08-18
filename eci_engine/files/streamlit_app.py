@@ -1294,96 +1294,6 @@ SELECT
 FROM public.picks_evaluated_unique_v;
 """
 
-# ---------------------------------------------------------------------
-# OUT-OF-SAMPLE PANEEL
-# Freeze-datum: vanaf hier zijn de regels bevroren en telt elke unieke
-# pick als eerlijke out-of-sample test (ROI + closing line value).
-# ---------------------------------------------------------------------
-FREEZE_DATE = "2026-08-18"
-
-SQL_OOS_SUMMARY = """
-WITH settled AS (
-    SELECT
-        outcome,
-        CASE
-            WHEN selection = 'HOME' THEN odds_home
-            WHEN selection = 'AWAY' THEN odds_away
-            WHEN selection = 'DRAW' THEN odds_draw
-        END AS selected_odds
-    FROM public.picks_evaluated_unique_v
-    WHERE selection IS NOT NULL
-      AND outcome IN ('WIN','LOSS')
-      AND COALESCE(date_ts, NULLIF(date::text, '')::date::timestamp) >= :freeze
-)
-SELECT
-    COUNT(*) AS bets,
-    COUNT(*) FILTER (WHERE outcome = 'WIN') AS wins,
-    ROUND(COALESCE(SUM(CASE WHEN outcome = 'WIN' THEN selected_odds - 1 ELSE -1 END), 0)::numeric, 2) AS profit,
-    ROUND((SUM(CASE WHEN outcome = 'WIN' THEN selected_odds - 1 ELSE -1 END) / NULLIF(COUNT(*), 0))::numeric, 4) AS roi,
-    ROUND((COUNT(*) FILTER (WHERE outcome = 'WIN'))::numeric / NULLIF(COUNT(*), 0), 4) AS hitrate
-FROM settled;
-"""
-
-
-def build_oos_clv_sql() -> str:
-    """CLV-query voor het out-of-sample paneel.
-
-    De naam van de ECI-kolom in de linkview kan verschillen; we kijken even
-    in de catalogus zodat de query zichzelf aanpast.
-    """
-    link_cols = set(table_columns("eci_fixture_link_mv")["column_name"])
-    eci_col = "match_id" if "match_id" in link_cols else "eci_match_id"
-    return f"""
-WITH picks AS (
-    SELECT
-        match_id,
-        selection,
-        CASE
-            WHEN selection = 'HOME' THEN odds_home
-            WHEN selection = 'AWAY' THEN odds_away
-            WHEN selection = 'DRAW' THEN odds_draw
-        END AS odds_taken
-    FROM public.picks_evaluated_unique_v
-    WHERE selection IS NOT NULL
-      AND outcome IN ('WIN','LOSS')
-      AND COALESCE(date_ts, NULLIF(date::text, '')::date::timestamp) >= :freeze
-),
-linked AS (
-    SELECT p.selection, p.odds_taken, l.fixture_id
-    FROM picks p
-    JOIN public.eci_fixture_link_mv l ON l.{eci_col} = p.match_id
-),
-closing AS (
-    SELECT DISTINCT ON (s.fixture_id)
-        s.fixture_id, s.odds_home, s.odds_draw, s.odds_away
-    FROM public.odds_1x2_bet365_snapshots_mv s
-    JOIN public.fixtures f ON f.fixture_id = s.fixture_id
-    WHERE s.fixture_id IN (SELECT DISTINCT fixture_id FROM linked)
-      AND s.captured_at <= f.date_utc
-    ORDER BY s.fixture_id, s.captured_at DESC
-),
-calc AS (
-    SELECT
-        li.odds_taken,
-        (1.0 / CASE
-            WHEN li.selection = 'HOME' THEN c.odds_home
-            WHEN li.selection = 'AWAY' THEN c.odds_away
-            ELSE c.odds_draw
-        END)
-        / (1.0 / c.odds_home + 1.0 / c.odds_draw + 1.0 / c.odds_away) AS p_close
-    FROM linked li
-    JOIN closing c ON c.fixture_id = li.fixture_id
-    WHERE c.odds_home > 1.01 AND c.odds_draw > 1.01 AND c.odds_away > 1.01
-)
-SELECT
-    COUNT(*) AS clv_bets,
-    ROUND(AVG(p_close * odds_taken - 1)::numeric, 4) AS avg_edge_vs_close,
-    ROUND(SUM(CASE WHEN p_close * odds_taken - 1 > 0 THEN 1 ELSE 0 END)::numeric
-          / NULLIF(COUNT(*), 0), 4) AS share_positive
-FROM calc;
-"""
-
-
 SQL_SETTLED_ROI = """
 WITH settled AS (
     SELECT
@@ -2126,41 +2036,6 @@ with tab_status:
             render_roi_chart(roi_time, df_aplus=roi_aplus if not roi_aplus.empty else None)
         except Exception as exc:
             st.warning("Could not load ROI chart.")
-            st.exception(exc)
-
-        st.divider()
-        st.subheader("Out-of-sample sinds freeze")
-        st.caption(
-            f"Regels bevroren per {FREEZE_DATE}. Unieke picks vanaf die wedstrijddatum. "
-            "Afspraak: oordeel bij 150-200 picks, op ROI en edge vs close samen."
-        )
-        try:
-            oos = query_df(SQL_OOS_SUMMARY, {"freeze": FREEZE_DATE})
-            if not oos.empty and int(oos.iloc[0]["bets"] or 0) > 0:
-                o = oos.iloc[0]
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Bets", metric_value(o["bets"]))
-                c2.metric("Profit", f"{float(o['profit']):+.2f} units")
-                c3.metric("ROI", f"{float(o['roi']):+.1%}")
-                c4.metric("Hit rate", f"{float(o['hitrate']):.1%}")
-                try:
-                    clv = query_df(build_oos_clv_sql(), {"freeze": FREEZE_DATE})
-                    if not clv.empty and int(clv.iloc[0]["clv_bets"] or 0) > 0:
-                        cl = clv.iloc[0]
-                        d1, d2, d3, _ = st.columns(4)
-                        d1.metric("CLV-meetbaar", metric_value(cl["clv_bets"]))
-                        d2.metric(
-                            "Edge vs close",
-                            f"{float(cl['avg_edge_vs_close']):+.1%}",
-                            help="Verwachte winst per unit als de ge-devigde closing kans de waarheid is. Moet > 0 zijn voor echte edge.",
-                        )
-                        d3.metric("Aandeel CLV > 0", f"{float(cl['share_positive']):.0%}")
-                except Exception:
-                    st.caption("CLV nog niet beschikbaar (snapshots/fixtures niet gekoppeld).")
-            else:
-                st.info("Nog geen gesettelde picks sinds de freeze-datum.")
-        except Exception as exc:
-            st.warning("Out-of-sample paneel kon niet laden. Is de unieke view aangemaakt?")
             st.exception(exc)
 
         st.subheader("Pick summary")

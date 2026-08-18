@@ -57,7 +57,10 @@ from prob_calibration import (
 # CONFIG
 # =====================================================================
 
-DEFAULT_SOURCE = "betmobile_tuning_preko_mv"
+# Volledige wedstrijdenset: het hele Oddspedia/Unibet-seizoen met odds,
+# ECI-kansen en uitslagen. De preko-view bevat alleen actuele wedstrijden
+# en is dus NIET geschikt om op te fitten.
+DEFAULT_SOURCE = "eci_oddspedia_matches"
 DEFAULT_SCHEMA = "public"
 
 CALIB_DIR = OUTPUT_DIR / "calibration"
@@ -69,6 +72,16 @@ W_GRID = [round(w, 2) for w in np.arange(0.0, 1.0001, 0.05)]
 
 # Datumsplitsing: eerste deel fit, laatste deel test.
 TRAIN_FRAC = 0.65
+
+# --pick-zone: fit alleen op wedstrijden die op productie-picks lijken.
+PICK_ZONE_MIN_GAP = 500
+PICK_ZONE_MIN_ODDS = 1.50
+PICK_ZONE_MAX_ODDS = 2.50
+DEFAULT_PICKZONE_WEIGHTS_PATH = CALIB_DIR / "calibration_weights_pickzone.json"
+
+# Onder dit totaal wordt er NIET gefit en NIETS weggeschreven:
+# dan is de bron vrijwel zeker verkeerd gekozen.
+MIN_TOTAL_MATCHES = 500
 
 # Klassen met minder train-wedstrijden vallen terug op het globale gewicht.
 MIN_CLASS_MATCHES = 400
@@ -97,29 +110,36 @@ CLASS_PATTERNS: list[tuple[str, list[str]]] = [
     (
         "summer_league",
         [
-            r"norway|norwegian|eliteserien|obos",
-            r"sweden|swedish|allsvenskan|superettan",
-            r"finland|finnish|veikkausliiga|ykk",
-            r"iceland|icelandic|besta deild|urvalsdeild",
-            r"\bireland\b|irish",
+            r"^norway$|norwegian|eliteserien|obos",
+            r"^sweden$|swedish|allsvenskan|superettan",
+            r"^finland$|finnish|veikkausliiga|ykk",
+            r"^iceland$|icelandic|besta deild|urvalsdeild",
+            # Let op: ^ireland$ en NIET \bireland\b — Northern Ireland (NIFL)
+            # is een wintercompetitie en hoort in standard.
+            r"^ireland$|league of ireland",
             r"faroe",
-            r"estonia|meistriliiga",
-            r"latvia|virsl",
-            r"lithuania|a lyga",
+            r"^estonia$|meistriliiga",
+            r"^latvia$|virsl",
+            r"^lithuania$|a lyga",
+        ],
+    ),
+    (
+        "european_cups",
+        [
+            r"champions league",
+            r"europa league",
+            r"conference league",
         ],
     ),
     (
         "top",
         [
-            r"premier league",
-            r"la ?liga",
-            r"\bserie a\b",
-            r"\bbundesliga\b",
-            r"ligue 1",
-            r"eredivisie",
-            r"primeira liga",
-            r"champions league",
-            r"europa league",
+            # In eci_oddspedia_matches zijn competitienamen landnamen.
+            r"^england$|premier league",
+            r"^spain$|la ?liga",
+            r"^italy$|\bserie a\b",
+            r"^germany$|\bbundesliga\b",
+            r"^france$|ligue 1",
         ],
     ),
 ]
@@ -180,11 +200,17 @@ WANTED_COLUMNS = [
     "match_id",
     "competition",
     "date",
+    "oddspedia_date",
+    "eci_date",
+    "status",
     "home_team",
     "away_team",
     "odds_home",
     "odds_draw",
     "odds_away",
+    "home_rating",
+    "away_rating",
+    "rating_diff",
     "home_win_pct",
     "draw_pct",
     "away_win_pct",
@@ -199,12 +225,19 @@ WANTED_COLUMNS = [
     "away_score",
 ]
 
-REQUIRED_COLUMNS = {"competition", "date", "odds_home", "odds_draw", "odds_away"}
+REQUIRED_COLUMNS = {"competition", "odds_home", "odds_draw", "odds_away"}
+DATE_COLUMN_CANDIDATES = ["date", "oddspedia_date", "eci_date"]
 
 
 def load_match_frame(source: str, schema: str = DEFAULT_SCHEMA) -> pd.DataFrame:
     """Laad de volledige wedstrijdenset uit de bronview."""
     available = get_table_columns(source, schema)
+
+    if not any(c in available for c in DATE_COLUMN_CANDIDATES):
+        raise RuntimeError(
+            f"Bron {schema}.{source} heeft geen datumkolom "
+            f"(verwacht een van: {DATE_COLUMN_CANDIDATES})"
+        )
 
     missing_required = REQUIRED_COLUMNS - available
     if missing_required:
@@ -304,7 +337,13 @@ def prepare_match_frame(
     df = raw.copy()
     n_start = len(df)
 
-    df["date_dt"] = pd.to_datetime(df["date"], errors="coerce")
+    # Datum: eerste beschikbare kandidaat, met de rest als fallback per rij.
+    df["date_dt"] = pd.NaT
+    for col in DATE_COLUMN_CANDIDATES:
+        if col in df.columns:
+            df["date_dt"] = pd.to_datetime(df["date_dt"], errors="coerce").fillna(
+                pd.to_datetime(df[col], errors="coerce")
+            )
     df["result_code_norm"] = normalize_results(df)
 
     prob_cols = detect_model_prob_cols(df)
@@ -572,6 +611,8 @@ def run_fit(
     export_csv: bool = False,
     refresh: bool = True,
     df: pd.DataFrame | None = None,
+    pick_zone: bool = False,
+    min_total: int | None = None,
 ) -> dict:
     print_header("BETMOBILE CALIBRATION FIT")
     print(
@@ -590,8 +631,35 @@ def run_fit(
     else:
         df = prepare_match_frame(df)
 
-    if df.empty:
-        raise RuntimeError("Geen bruikbare wedstrijden om op te fitten.")
+    if pick_zone:
+        if not {"home_rating", "away_rating"} <= set(df.columns):
+            raise RuntimeError("--pick-zone vereist home_rating/away_rating in de bron.")
+        hr = pd.to_numeric(df["home_rating"], errors="coerce")
+        ar = pd.to_numeric(df["away_rating"], errors="coerce")
+        df["rating_gap"] = (hr - ar).abs()
+        fav_odds = df[["odds_home", "odds_away"]].min(axis=1)
+        n_before = len(df)
+        df = df[
+            (df["rating_gap"] >= PICK_ZONE_MIN_GAP)
+            & fav_odds.between(PICK_ZONE_MIN_ODDS, PICK_ZONE_MAX_ODDS)
+        ].copy()
+        print(
+            f"[pick-zone] gap>={PICK_ZONE_MIN_GAP} & fav-odds "
+            f"{PICK_ZONE_MIN_ODDS}-{PICK_ZONE_MAX_ODDS}: {n_before} -> {len(df)} wedstrijden"
+        )
+        # Diagnostische fit op een subset: schrijf naar een APART bestand,
+        # zodat het productie-gewichtenbestand nooit per ongeluk overschreven wordt.
+        if Path(weights_path) == Path(DEFAULT_WEIGHTS_PATH):
+            weights_path = DEFAULT_PICKZONE_WEIGHTS_PATH
+
+    min_needed = min_total if min_total is not None else MIN_TOTAL_MATCHES
+    if len(df) < min_needed:
+        raise RuntimeError(
+            f"Slechts {len(df)} bruikbare wedstrijden in {schema}.{source} - "
+            f"minimaal {min_needed} nodig. Er wordt NIETS weggeschreven. "
+            "Controleer of je de volledige seizoenstabel gebruikt "
+            "(bijv. --source eci_oddspedia_matches)."
+        )
 
     # Mappingtabel: dit MOET je na de eerste run controleren.
     mapping = (
@@ -617,6 +685,7 @@ def run_fit(
     version = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     calib = {
         "version": version,
+        "scope": "pick_zone" if pick_zone else "all_matches",
         "fitted_at": datetime.now().isoformat(timespec="seconds"),
         "source": f"{schema}.{source}",
         "data_window": {
@@ -659,11 +728,15 @@ def run_fit(
         "Wijkt het sterk af, dan is de klasse te klein of te ruizig."
     )
 
-    print_table(
-        "RELIABILITY OP TESTSET (gap ~ 0 na calibratie is goed)",
-        reliability[reliability["source"].isin(["model", "calibrated"])],
-        max_rows=120,
-    )
+    if reliability.empty:
+        print_header("RELIABILITY OP TESTSET")
+        print("Geen testset beschikbaar (geen wedstrijden na de splitsdatum).")
+    else:
+        print_table(
+            "RELIABILITY OP TESTSET (gap ~ 0 na calibratie is goed)",
+            reliability[reliability["source"].isin(["model", "calibrated"])],
+            max_rows=120,
+        )
 
     print_header("KLAAR")
     print(f"[export] gewichtenbestand: {weights_path} (versie {version})")
@@ -843,6 +916,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weights-path", default=str(DEFAULT_WEIGHTS_PATH))
     parser.add_argument("--export-csv", action="store_true")
     parser.add_argument(
+        "--pick-zone",
+        action="store_true",
+        help="Fit alleen op pick-achtige wedstrijden (gap>=500, fav-odds 1.50-2.50); schrijft naar een apart gewichtenbestand",
+    )
+    parser.add_argument("--min-total", type=int, default=None, help="Override minimum aantal wedstrijden")
+    parser.add_argument(
         "--no-refresh",
         action="store_true",
         help="Refresh materialized views niet vooraf",
@@ -871,4 +950,6 @@ if __name__ == "__main__":
             weights_path=args.weights_path,
             export_csv=args.export_csv,
             refresh=not args.no_refresh,
+            pick_zone=args.pick_zone,
+            min_total=args.min_total,
         )
