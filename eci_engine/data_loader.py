@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from db import db_engine, get_upcoming_source_name
+from config import USE_PROB_CALIBRATION, CALIBRATION_WEIGHTS_PATH
+from prob_calibration import load_calibration, calibrate_probs
 
 # =====================================================================
 # LOAD UPCOMING MATCHES (uit betmobile)
@@ -52,6 +54,40 @@ def load_upcoming():
         df[c] = pd.to_numeric(df[c], errors="coerce")
         if df[c].max() > 1.2:
             df[c] = df[c] / 100.0
+
+    # ---------------------------------------------------------
+    # PROBABILITY-CALIBRATIE (shrinkage richting markt)
+    #
+    # Rauwe ECI-kansen blijven bewaard in prob_*_raw. Daarna worden
+    # home_win_pct/draw_pct/away_win_pct overschreven met de
+    # gekalibreerde kansen, zodat ALLES stroomafwaarts (Home Prob,
+    # bet_*, rules, strength, picks, tiers) automatisch op de
+    # gekalibreerde kansen draait.
+    #
+    # Rijen zonder geldige odds/kansen krijgen NaN en vallen daardoor
+    # vanzelf af in de rules — bewust geen stille fallback naar raw.
+    # ---------------------------------------------------------
+    df["prob_home_raw"] = df["home_win_pct"]
+    df["prob_draw_raw"] = df["draw_pct"]
+    df["prob_away_raw"] = df["away_win_pct"]
+
+    if USE_PROB_CALIBRATION:
+        calib = load_calibration(CALIBRATION_WEIGHTS_PATH)
+        df = calibrate_probs(
+            df,
+            calib,
+            model_prob_cols=("home_win_pct", "draw_pct", "away_win_pct"),
+        )
+        n_nan = int(df["prob_cal_home"].isna().sum())
+        if n_nan:
+            print(f"[calibratie] {n_nan} wedstrijden zonder geldige kansen/odds -> vallen af in rules.")
+        print(
+            f"[calibratie] versie {calib['version']} toegepast op {len(df)} wedstrijden; "
+            f"klassen: {df['calibration_class'].value_counts().to_dict()}"
+        )
+        df["home_win_pct"] = df["prob_cal_home"]
+        df["draw_pct"] = df["prob_cal_draw"]
+        df["away_win_pct"] = df["prob_cal_away"]
 
     df["Home Prob"] = df["home_win_pct"]
     df["Draw Prob"] = df["draw_pct"]

@@ -23,6 +23,7 @@ from config import (
     RULE_MIN_RATING_GAP,
     RULE_MIN_DRIFT_ABS,
     DRIFT_OPPOSE_THRESHOLD,
+    USE_STRENGTH_CALIBRATION,
 )
 
 # =====================================================================
@@ -45,9 +46,16 @@ def main():
 
     # 3. Drift features zitten nu al in betmobile via load_upcoming()
 
-    # 4. Historische calibratie
-    hist = load_calibration_history()
-    calib_meta, calib_table = build_calibration(hist)
+    # 4. Historische strength-calibratie (OUD, uitgefaseerd).
+    #    Met USE_STRENGTH_CALIBRATION=False geeft apply_calibration overal
+    #    multiplier 1.0 (RuleStrengthCalibrated == RuleStrengthAdj) en
+    #    blijft de rest van de flow ongewijzigd. Rollback = flag op True.
+    if USE_STRENGTH_CALIBRATION:
+        hist = load_calibration_history()
+        calib_meta, calib_table = build_calibration(hist)
+    else:
+        print("[CALIB] Strength-calibratie uit (USE_STRENGTH_CALIBRATION=False); probability-calibratie zit in data_loader.")
+        calib_meta, calib_table = None, None
 
     # 5. Rules + drift + calibratie
     df = apply_rules(df)

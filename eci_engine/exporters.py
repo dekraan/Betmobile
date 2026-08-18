@@ -140,6 +140,12 @@ def save_to_db(picks: pd.DataFrame, calib_meta: dict | None = None):
                     r.get("classification_reason"),
                     bool(r.get("passes_danger_combo_v2")) if pd.notna(r.get("passes_danger_combo_v2")) else None,
                     bool(r.get("passes_danger_combo_v2_no_longshots")) if pd.notna(r.get("passes_danger_combo_v2_no_longshots")) else None,
+                    safe_float(r.get("prob_home_raw")),
+                    safe_float(r.get("prob_draw_raw")),
+                    safe_float(r.get("prob_away_raw")),
+                    r.get("calibration_class"),
+                    safe_float(r.get("calibration_w")),
+                    r.get("calibration_version"),
                 )
             )
 
@@ -160,7 +166,9 @@ def save_to_db(picks: pd.DataFrame, calib_meta: dict | None = None):
                 value_edge, prob_edge, drift_score, snapshot_count,
                 strength_bucket, rating_gap, drift_range,
                 pick_tier, pick_stars, sector_tags, danger_tags, classification_reason,
-                passes_danger_combo_v2, passes_danger_combo_v2_no_longshots
+                passes_danger_combo_v2, passes_danger_combo_v2_no_longshots,
+                prob_home_raw, prob_draw_raw, prob_away_raw,
+                calibration_class, calibration_w, calibration_version
             ) VALUES %s
         """
 

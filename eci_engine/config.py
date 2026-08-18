@@ -109,6 +109,17 @@ RECENT24_PENALTY            = 0.05
 # -----------------------------------------------------
 # CALIBRATION
 # -----------------------------------------------------
+# NIEUW: probability-calibratie (shrinkage richting markt).
+# Gewichten worden gefit met fit_calibration.py en BEVROREN opgeslagen.
+# Toegepast in data_loader.load_upcoming() via prob_calibration.py.
+USE_PROB_CALIBRATION = True
+CALIBRATION_WEIGHTS_PATH = OUTPUT_DIR / "calibration" / "calibration_weights.json"
+
+# OUD: strength-calibratie met ROI-multipliers (calibration.py).
+# Uitgefaseerd: dit vermenigvuldigde in-sample ROI terug de strength in.
+# Op False geeft apply_calibration overal multiplier 1.0; rollback = True.
+USE_STRENGTH_CALIBRATION = False
+
 CALIB_MIN_PICKS      = 200
 CALIB_N_BANDS        = 5
 CALIB_MIN_BETS_PER_BAND = 30
