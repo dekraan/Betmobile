@@ -7,6 +7,7 @@ from rules import apply_rules, apply_drift
 from calibration import build_calibration, apply_calibration
 from picks import build_picks
 from classification import classify_picks
+from tier_assign import assign_tiers
 from reporting import analyze_failures
 from exporters import save_to_db, save_excel, save_single_fails_to_db
 from utils import choose_relevant_side
@@ -66,6 +67,7 @@ def main():
     # 5a. Bouw MAIN + SECONDARY picks
     picks = build_picks(df)
     picks = classify_picks(picks)
+    picks = assign_tiers(picks)   # nieuwe tiers op basis van geschatte EV
     # 5b) WATCHLIST: alleen snap faalt (dus inhoudelijk OK, maar nog niet genoeg gescraped)
     snap_watch = df[
         (

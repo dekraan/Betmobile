@@ -1566,14 +1566,16 @@ def load_odds_for_fixtures(fixture_ids, max_cache_ttl=300):
     total_groups = len(groups)
     for gi, ((lg, s, d), fxs) in enumerate(groups.items(), start=1):
         try:
-            data = get_json("/odds", params={
+            # LET OP: /odds pagineert (~10 fixtures per pagina). Met get_json
+            # kreeg je alleen pagina 1, waardoor op drukke competitiedagen de
+            # rest van de wedstrijden structureel zonder odds bleef.
+            resp = get_all_pages("/odds", params={
                 "league": lg, "season": s, "date": d.isoformat(), "timezone": "UTC"
             }, cache_ttl=max_cache_ttl)
         except Exception as e:
             print(f"[odds][HTTP] lg={lg} s={s} d={d} error: {e}")
-            data = {}
+            resp = []
 
-        resp = (data or {}).get("response") or []
         before = len(odds_rows)
 
         # -------------------------------

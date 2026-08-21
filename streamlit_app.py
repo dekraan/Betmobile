@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 from sqlalchemy import create_engine, text
 
@@ -1276,6 +1277,113 @@ ORDER BY run_id DESC, date DESC NULLS LAST, rule_strength_adj DESC NULLS LAST
 LIMIT 50;
 """
 
+# ---------------------------------------------------------------------
+# ALLE WEDSTRIJDEN VAN EEN DAG
+# Toont elke wedstrijd uit de bronview, ook die geen pick werd, met de
+# stats die de engine gebruikt. Beantwoordt: "waarom staat deze er niet bij?"
+# ---------------------------------------------------------------------
+
+def build_all_matches_sql(source: str) -> str:
+    return f"""
+        SELECT
+            m.match_id, m.date, m.competition,
+            m.home_team, m.away_team,
+            m.odds_home, m.odds_draw, m.odds_away,
+            m.home_win_pct, m.draw_pct, m.away_win_pct,
+            m.home_rating, m.away_rating,
+            m.home_drift_pct, m.away_drift_pct,
+            m.n_snapshots, m.hours_stale, m.market_age_hours,
+            m.kickoff_at, m.hours_to_kickoff
+        FROM public.{source} m
+        WHERE m.score IS NULL
+          AND m.odds_home IS NOT NULL
+          AND to_date(m.date, 'YYYY-MM-DD') = :day
+        ORDER BY m.kickoff_at NULLS LAST, m.competition
+    """
+
+
+SQL_PICKS_FOR_DAY = """
+    WITH laatste_run AS (
+        SELECT MAX(run_id) AS run_id FROM public.picks_evaluated
+    ),
+    per_match AS (
+        SELECT DISTINCT ON (match_id)
+            match_id, selection, pick_type, pick_tier,
+            rule_strength_adj, classification_reason, run_id
+        FROM public.picks_evaluated
+        WHERE NULLIF(date::text, '')::date = :day
+        ORDER BY match_id, run_id DESC
+    )
+    SELECT p.*,
+           (p.run_id = (SELECT run_id FROM laatste_run)) AS actief_in_laatste_run,
+           (SELECT run_id FROM laatste_run) AS laatste_run_id
+    FROM per_match p
+"""
+
+
+def annotate_all_matches(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
+    """Voeg de afgeleide cijfers toe die de engine ook gebruikt."""
+    if df.empty:
+        return df
+    df = df.copy()
+
+    for c in ["home_win_pct", "draw_pct", "away_win_pct"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    if df[["home_win_pct", "draw_pct", "away_win_pct"]].max().max() > 1.2:
+        for c in ["home_win_pct", "draw_pct", "away_win_pct"]:
+            df[c] = df[c] / 100.0
+
+    for c in ["odds_home", "odds_draw", "odds_away", "home_rating", "away_rating"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Marktkans (ge-devigd) naast de ECI-kans: het verschil is het hele verhaal.
+    imp = pd.DataFrame({
+        "h": 1 / df["odds_home"], "d": 1 / df["odds_draw"], "a": 1 / df["odds_away"],
+    })
+    tot = imp.sum(axis=1)
+    df["mkt_home"] = imp["h"] / tot
+    df["mkt_draw"] = imp["d"] / tot
+    df["mkt_away"] = imp["a"] / tot
+    df["marge"] = tot - 1
+
+    # ECI-favoriet en de bijbehorende cijfers
+    eci = df[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float)
+    mkt = df[["mkt_home", "mkt_draw", "mkt_away"]].to_numpy(float)
+    odds = df[["odds_home", "odds_draw", "odds_away"]].to_numpy(float)
+    labels = np.array(["HOME", "DRAW", "AWAY"])
+    ei, mi = eci.argmax(axis=1), mkt.argmax(axis=1)
+    rows = np.arange(len(df))
+
+    df["eci_favoriet"] = labels[ei]
+    df["eci_kans"] = eci[rows, ei]
+    df["markt_favoriet"] = labels[mi]
+    df["markt_kans"] = mkt[rows, mi]
+    df["eens"] = df["eci_favoriet"] == df["markt_favoriet"]
+    df["value_eci_fav"] = odds[rows, ei] * eci[rows, ei]
+    df["odds_eci_fav"] = odds[rows, ei]
+    df["rating_gap"] = (df["home_rating"] - df["away_rating"]).abs()
+    df["eci_min_markt"] = df["eci_kans"] - mkt[rows, ei]
+
+    if picks is not None and not picks.empty:
+        df = df.merge(picks, on="match_id", how="left")
+        df["is_pick"] = df["selection"].notna()
+        # Een pick die in een oudere run ontstond maar in de laatste run niet
+        # meer werd weggeschreven, is vervallen (bijv. odds bewogen).
+        # picks_evaluated bevat alleen picks, dus "geen rij" = geen pick meer.
+        df["pick_status"] = np.select(
+            [~df["is_pick"], df["actief_in_laatste_run"].fillna(False)],
+            ["-", "ACTIEF"],
+            default="vervallen",
+        )
+    else:
+        df["is_pick"] = False
+        df["pick_status"] = "-"
+        for c in ["selection", "pick_type", "pick_tier", "rule_strength_adj", "run_id"]:
+            df[c] = None
+
+    return df
+
+
 SQL_PICK_SUMMARY = """
 SELECT
     COUNT(*) AS total_picks,
@@ -2046,6 +2154,86 @@ with st.sidebar:
 
     st.divider()
 
+def render_all_matches() -> None:
+    """Alle wedstrijden van een dag, ook de niet-picks.
+
+    Beantwoordt de vraag "waarom staat deze wedstrijd er niet bij?" door
+    dezelfde cijfers te tonen die de engine gebruikt.
+    """
+    import datetime as _dt
+
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        day = st.date_input("Dag", value=_dt.date.today())
+    with col2:
+        only_agree = st.checkbox("Alleen waar ECI en markt het eens zijn", value=False)
+
+    try:
+        source = query_df("""
+            SELECT c.relname AS name
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND c.relname IN ('betmobile_api_ready_mv', 'betmobile_api_mv')
+            ORDER BY c.relname
+        """)
+        if source.empty:
+            st.warning("Bronview niet gevonden.")
+            return
+        source_name = source.iloc[0]["name"]
+
+        matches = query_df(build_all_matches_sql(source_name), {"day": day})
+        if matches.empty:
+            st.info(f"Geen wedstrijden met odds gevonden op {day}.")
+            return
+
+        picks = query_df(SQL_PICKS_FOR_DAY, {"day": day})
+        df = annotate_all_matches(matches, picks)
+        if only_agree:
+            df = df[df["eens"]]
+
+        n_actief = int((df["pick_status"] == "ACTIEF").sum())
+        n_vervallen = int((df["pick_status"] == "vervallen").sum())
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Wedstrijden", len(df))
+        c2.metric("Actieve picks", n_actief)
+        c3.metric("Vervallen picks", n_vervallen,
+                  help="Was pick in een eerdere run, maar niet meer in de laatste run.")
+        c4.metric("ECI eens met markt", f"{df['eens'].mean():.0%}" if len(df) else "—")
+
+        st.caption(
+            "eci_kans = ECI's kans op zijn eigen favoriet. markt_kans = ge-devigde "
+            "kans van de bookmaker. eci_min_markt > 0 betekent dat ECI optimistischer "
+            "is dan de markt — historisch had ECI in die gevallen juist vaker ongelijk."
+        )
+
+        cols = [
+            "kickoff_at", "competition", "home_team", "away_team",
+            "eci_favoriet", "eci_kans", "markt_favoriet", "markt_kans",
+            "eci_min_markt", "odds_eci_fav", "value_eci_fav", "rating_gap",
+            "home_drift_pct", "away_drift_pct", "n_snapshots",
+            "pick_status", "selection", "pick_tier", "rule_strength_adj", "run_id",
+        ]
+        cols = [c for c in cols if c in df.columns]
+        view_df = df[cols].sort_values(
+            ["pick_status", "markt_kans"], ascending=[True, False]
+        )
+        st.dataframe(view_df, use_container_width=True, hide_index=True)
+
+        with st.expander("Waarom werd een wedstrijd geen pick?", expanded=False):
+            st.markdown(
+                "- **ECI en markt oneens** — historisch de slechtste groep (-12% ROI)\n"
+                "- **te weinig snapshots** — de driftberekening is dan onbetrouwbaar\n"
+                "- **odds buiten bereik** of **kans onder de drempel** (zie Rules-tab)\n"
+                "- **rating gap te klein** — het model ziet dan geen duidelijk verschil\n\n"
+                "Let op: geen pick zijn betekent niet 'slechte wedstrijd'. Onze eigen "
+                "metingen laten zien dat de marktkans het meeste voorspelt, en dat "
+                "ECI daar hooguit iets bovenop legt."
+            )
+    except Exception as exc:  # noqa: BLE001
+        st.warning("Kon de wedstrijden niet laden.")
+        st.exception(exc)
+
+
 tab_status, tab_picks, tab_research, tab_rules, tab_debug = st.tabs(["Status", "Picks", "Analysis", "Rules", "Debug"])
 
 with tab_status:
@@ -2197,12 +2385,14 @@ with tab_picks:
 
     view = st.radio(
         "View",
-        ["Today + tomorrow", "Open picks", "Watchlist", "Last 50"],
+        ["Today + tomorrow", "Alle wedstrijden", "Open picks", "Watchlist", "Last 50"],
         horizontal=True,
     )
 
     try:
-        if view == "Today + tomorrow":
+        if view == "Alle wedstrijden":
+            render_all_matches()
+        elif view == "Today + tomorrow":
             df = query_df(SQL_TODAY_TOMORROW)
             render_pick_cards(df, "No picks for today or tomorrow.")
             with st.expander("Table view", expanded=False):
