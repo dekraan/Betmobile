@@ -170,8 +170,8 @@ def save_to_db(picks: pd.DataFrame, calib_meta: dict | None = None):
                 pick_tier, pick_stars, sector_tags, danger_tags, classification_reason,
                 passes_danger_combo_v2, passes_danger_combo_v2_no_longshots,
                 prob_home_raw, prob_draw_raw, prob_away_raw,
-                calibration_class, calibration_w, calibration_version
-                estimated_ev, tier_version,
+                calibration_class, calibration_w, calibration_version,
+                estimated_ev, tier_version
             ) VALUES %s
         """
 
