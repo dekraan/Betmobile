@@ -1,6 +1,6 @@
 {
-  "version": "2026-08-28_100034",
-  "fitted_at": "2026-08-28T10:00:34",
+  "version": "2026-08-28_140228",
+  "fitted_at": "2026-08-28T14:02:28",
   "source": "public.eci_oddspedia_matches",
   "split_date": "2026-01-24",
   "method": "isotonic_ev_by_price",
@@ -342,7 +342,7 @@
     ]
   ],
   "eci_bonus": 0.0,
-  "eci_recalibration": "eci_isotonic.json",
+  "eci_recalibration": null,
   "validation": {
     "ordering_works": true,
     "note": "helling +0.63 (1.00 = perfect), samenhang +0.82 -> curve voorspelt het rendement",

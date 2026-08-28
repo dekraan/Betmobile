@@ -343,7 +343,8 @@ def validate_curve(test: pd.DataFrame, curve: list[dict], overall: float) -> tup
 
 def run(source: str, schema: str, train_frac: float, refresh: bool,
         export_csv: bool, with_eci: bool, eci_bonus: float,
-        df: pd.DataFrame | None = None, use_isotonic: bool = True) -> dict:
+        df: pd.DataFrame | None = None, use_isotonic: bool = True,
+        fit_eci_calib: bool = False) -> dict:
     print_header("TIERS OPNIEUW OPBOUWEN OP GESCHATTE EV")
     print(
         "Oude tiers: segmenten uit auto-discovery -> optimaliseren op\n"
@@ -429,38 +430,51 @@ def run(source: str, schema: str, train_frac: float, refresh: bool,
         f"[{best_tier['roi_lo']:+.2%}, {best_tier['roi_hi']:+.2%}]"
     )
 
-    # ---- 3b. ECI-hercalibratie (los van de tiers) ----
-    # ECI rangschikt correct maar claimt te extreme kansen. Een monotone
-    # vertaaltabel maakt het GETOONDE getal eerlijk zonder de rangorde te
-    # raken. Levert geen edge op; wel een kans die klopt.
-    eci_cal = fit_eci_recalibration(train)
-    eci_path = TIER_DIR / DEFAULT_ECI_CALIB_NAME
-    save_calibration(eci_cal, eci_path)
+    # ---- 3b. ECI-hercalibratie: AFGEKEURD EXPERIMENT ----
+    # Idee: een monotone vertaaltabel die ECI's te extreme kansen rechttrekt.
+    # UITKOMST OP DE TESTSET (2026-08-28): werkt niet. ECI bleek op de
+    # favoriet al goed gekalibreerd (verschil -0,0016) en de correctie maakte
+    # het slechter (+0,0119; log loss 0,9961 -> 0,9966). Het patroon is niet
+    # stabiel tussen seizoenshelften.
+    # De fit blijft hier staan als meting - zo zie je bij een volgende run
+    # meteen of dat oordeel nog steeds klopt - maar tier_assign PAST HEM NIET
+    # MEER TOE. Draai met --fit-eci-calib als je hem opnieuw wilt toetsen.
+    if not fit_eci_calib:
+        print_header("3b. ECI-HERCALIBRATIE: OVERGESLAGEN (afgekeurd experiment)")
+        print(
+            "Getoetst op 2026-08-28: maakte de kans slechter, niet beter.\n"
+            "Draai met --fit-eci-calib om de toets te herhalen."
+        )
+        eci_cal = None
+    else:
+        eci_cal = fit_eci_recalibration(train)
+        eci_path = TIER_DIR / DEFAULT_ECI_CALIB_NAME
+        save_calibration(eci_cal, eci_path)
 
-    eci_raw = test[["mdl_home", "mdl_draw", "mdl_away"]].to_numpy(float)
-    eci_new = recalibrate_eci(eci_raw, eci_cal)
-    y_test = test["y_idx"].to_numpy(int)
+        eci_raw = test[["mdl_home", "mdl_draw", "mdl_away"]].to_numpy(float)
+        eci_new = recalibrate_eci(eci_raw, eci_cal)
+        y_test = test["y_idx"].to_numpy(int)
 
-    def _ll(mat):
-        return float(-np.mean(np.log(np.clip(mat[np.arange(len(y_test)), y_test], 1e-9, None))))
+        def _ll(mat):
+            return float(-np.mean(np.log(np.clip(mat[np.arange(len(y_test)), y_test], 1e-9, None))))
 
-    print_header("3b. ECI-HERCALIBRATIE (alleen het getoonde getal)")
-    rows_cal = []
-    for lbl, mat in [("ECI ruw", eci_raw), ("ECI gekalibreerd", eci_new)]:
-        hoog = mat.max(axis=1)
-        raak = (mat.argmax(axis=1) == y_test).astype(float)
-        rows_cal.append({
-            "variant": lbl,
-            "logloss_test": _ll(mat),
-            "gem_geclaimd_favoriet": float(hoog.mean()),
-            "werkelijk_favoriet": float(raak.mean()),
-            "verschil": float(raak.mean() - hoog.mean()),
-        })
-    print(pd.DataFrame(rows_cal).round(4).to_string(index=False))
-    print(
-        "'verschil' hoort bij een eerlijke kans rond nul te liggen.\n"
-        f"[export] {eci_path}"
-    )
+        print_header("3b. ECI-HERCALIBRATIE (alleen het getoonde getal)")
+        rows_cal = []
+        for lbl, mat in [("ECI ruw", eci_raw), ("ECI gekalibreerd", eci_new)]:
+            hoog = mat.max(axis=1)
+            raak = (mat.argmax(axis=1) == y_test).astype(float)
+            rows_cal.append({
+                "variant": lbl,
+                "logloss_test": _ll(mat),
+                "gem_geclaimd_favoriet": float(hoog.mean()),
+                "werkelijk_favoriet": float(raak.mean()),
+                "verschil": float(raak.mean() - hoog.mean()),
+            })
+        print(pd.DataFrame(rows_cal).round(4).to_string(index=False))
+        print(
+            "'verschil' hoort bij een eerlijke kans rond nul te liggen.\n"
+            f"[export] {eci_path}"
+        )
 
     # ---- 4. Bevriezen ----
     version = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -475,7 +489,7 @@ def run(source: str, schema: str, train_frac: float, refresh: bool,
         "overall_ev": ev_overall,
         "tier_edges": [[n, (None if np.isinf(e) else float(e))] for n, e in TIER_EDGES],
         "eci_bonus": bonus,
-        "eci_recalibration": DEFAULT_ECI_CALIB_NAME,
+        "eci_recalibration": (DEFAULT_ECI_CALIB_NAME if fit_eci_calib else None),
         "validation": {
             "ordering_works": bool(ok),
             "note": msg,
@@ -514,13 +528,16 @@ def main() -> None:
     p.add_argument("--export-csv", action="store_true")
     p.add_argument("--with-eci", action="store_true",
                    help="Geef ECI-instemming een kleine opslag en kijk of het helpt")
+    p.add_argument("--fit-eci-calib", action="store_true",
+                   help="Herhaal de (eerder afgekeurde) ECI-hercalibratietoets")
     p.add_argument("--buckets", action="store_true",
                    help="Gebruik de oude handmatige odds-buckets in plaats van de gladde curve")
     p.add_argument("--eci-bonus", type=float, default=0.014,
                    help="Opslag bij ECI-instemming (default 0.014 = het gemeten residu)")
     a = p.parse_args()
     run(a.source, a.schema, a.train_frac, not a.no_refresh, a.export_csv,
-        a.with_eci, a.eci_bonus, use_isotonic=not a.buckets)
+        a.with_eci, a.eci_bonus, use_isotonic=not a.buckets,
+        fit_eci_calib=a.fit_eci_calib)
 
 
 if __name__ == "__main__":

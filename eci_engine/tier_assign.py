@@ -41,27 +41,6 @@ from config import OUTPUT_DIR
 DEFAULT_TIER_PATH = OUTPUT_DIR / "calibration" / "tier_definition.json"
 
 _CACHE: dict | None = None
-_ECI_CACHE: dict | None = None
-_ECI_TRIED = False
-
-
-def load_eci_recalibration() -> dict | None:
-    """Laad de monotone vertaaltabel voor ECI-kansen (indien aanwezig)."""
-    global _ECI_CACHE, _ECI_TRIED
-    if _ECI_TRIED:
-        return _ECI_CACHE
-    _ECI_TRIED = True
-    try:
-        from isotonic import load_calibration_file, DEFAULT_ECI_CALIB_NAME
-
-        _ECI_CACHE = load_calibration_file(
-            OUTPUT_DIR / "calibration" / DEFAULT_ECI_CALIB_NAME
-        )
-    except Exception:  # noqa: BLE001
-        _ECI_CACHE = None
-    return _ECI_CACHE
-
-
 def load_tier_definition(path: str | Path | None = None) -> dict | None:
     """Laad de bevroren tier-definitie; geeft None als hij ontbreekt."""
     global _CACHE
@@ -179,14 +158,14 @@ def classify_row(row: pd.Series, tier_def: dict) -> dict:
     if eci_prob is not None and eci_prob > 1.2:
         eci_prob /= 100.0
 
-    # ECI claimt te extreme kansen (86% waar 81% gebeurt). De monotone
-    # vertaaltabel maakt het getoonde getal eerlijk; de rangorde blijft gelijk.
+    # UITGEZET NA TOETSING (2026-08-28).
+    # Het idee was een monotone vertaaltabel die ECI's te extreme kansen
+    # rechttrekt. Op de testset bleek ECI op de favoriet al goed gekalibreerd
+    # (verschil -0,0016), en de correctie maakte het slechter: verschil +0,0119
+    # en log loss 0,9961 -> 0,9966. Het overmoed-patroon per uitkomsttype is
+    # niet stabiel genoeg tussen seizoenshelften om op te corrigeren.
+    # De rauwe ECI-kans is dus eerlijker dan de gecorrigeerde; we tonen die.
     eci_prob_raw = eci_prob
-    eci_cal = load_eci_recalibration()
-    if eci_cal and eci_prob is not None:
-        from isotonic import apply_isotonic
-
-        eci_prob = float(apply_isotonic(np.array([eci_prob]), eci_cal.get("knots") or [])[0])
 
     # Marktkans uit alle drie de odds, ge-devigd volgens Shin (dezelfde
     # methode als de rest van het systeem; proportioneel onderschatte de
@@ -222,7 +201,6 @@ def classify_row(row: pd.Series, tier_def: dict) -> dict:
 
     return {
         "eci_prob_raw": eci_prob_raw,
-        "eci_prob_calibrated": eci_prob,
         "pick_tier": tier,
         "pick_stars": stars,
         "estimated_ev": ev,
@@ -256,7 +234,7 @@ def assign_tiers(picks: pd.DataFrame, path: str | Path | None = None) -> pd.Data
     out = picks.copy()
     res = [classify_row(r, tier_def) for _, r in out.iterrows()]
     for key in ("pick_tier", "pick_stars", "estimated_ev", "tier_version",
-                "classification_reason", "eci_prob_raw", "eci_prob_calibrated"):
+                "classification_reason", "eci_prob_raw"):
         out[key] = [r[key] for r in res]
     return out
 
