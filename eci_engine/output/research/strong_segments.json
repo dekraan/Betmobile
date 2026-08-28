@@ -1,0 +1,376 @@
+{
+  "segments": [
+    {
+      "name": "strong_market_support_neutral__value_bucket_1_30plus",
+      "conditions": {
+        "market_support": "NEUTRAL",
+        "value_bucket": "1.30+"
+      },
+      "meta": {
+        "dimensions": "market_support + value_bucket",
+        "bets": 49,
+        "wins": 32,
+        "profit": 41.150000000000006,
+        "roi": 0.839795918367347,
+        "roi_vs_baseline": 0.6346681811410697,
+        "hitrate": 0.6530612244897959,
+        "avg_odds": 2.5983673469387756,
+        "avg_prob_selected": 0.6298571428571429,
+        "avg_value": 1.5991861224489798,
+        "avg_strength": 3.125719183673469,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_competition_netherlands",
+      "conditions": {
+        "competition": "Netherlands"
+      },
+      "meta": {
+        "dimensions": "competition",
+        "bets": 35,
+        "wins": 32,
+        "profit": 27.400000000000002,
+        "roi": 0.7828571428571429,
+        "roi_vs_baseline": 0.5777294056308655,
+        "hitrate": 0.9142857142857143,
+        "avg_odds": 1.965142857142857,
+        "avg_prob_selected": 0.6433428571428571,
+        "avg_value": 1.2641731428571428,
+        "avg_strength": 2.6070902857142855,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_prob_bucket_52_55pct__market_support_neutral",
+      "conditions": {
+        "prob_bucket": "52-55%",
+        "market_support": "NEUTRAL"
+      },
+      "meta": {
+        "dimensions": "prob_bucket + market_support",
+        "bets": 42,
+        "wins": 30,
+        "profit": 32.6,
+        "roi": 0.7761904761904762,
+        "roi_vs_baseline": 0.5710627389641989,
+        "hitrate": 0.7142857142857143,
+        "avg_odds": 2.4647619047619047,
+        "avg_prob_selected": 0.5307857142857143,
+        "avg_value": 1.30611,
+        "avg_strength": 1.9421652380952383,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_prob_bucket_52_55pct__rating_gap_bucket_250_500",
+      "conditions": {
+        "prob_bucket": "52-55%",
+        "rating_gap_bucket": "250-500"
+      },
+      "meta": {
+        "dimensions": "prob_bucket + rating_gap_bucket",
+        "bets": 31,
+        "wins": 21,
+        "profit": 22.21,
+        "roi": 0.7164516129032258,
+        "roi_vs_baseline": 0.5113238756769485,
+        "hitrate": 0.6774193548387096,
+        "avg_odds": 2.500967741935484,
+        "avg_prob_selected": 0.5312580645161291,
+        "avg_value": 1.3271309677419356,
+        "avg_strength": 1.8681167741935485,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_odds_bucket_1_6_1_8__value_bucket_1_15_1_30",
+      "conditions": {
+        "odds_bucket": "1.6-1.8",
+        "value_bucket": "1.15-1.30"
+      },
+      "meta": {
+        "dimensions": "odds_bucket + value_bucket",
+        "bets": 44,
+        "wins": 42,
+        "profit": 28.62,
+        "roi": 0.6504545454545455,
+        "roi_vs_baseline": 0.44532680822826815,
+        "hitrate": 0.9545454545454546,
+        "avg_odds": 1.7306818181818182,
+        "avg_prob_selected": 0.7000227272727272,
+        "avg_value": 1.2109252272727273,
+        "avg_strength": 3.9787595454545452,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_odds_bucket_1_6_1_8__rating_gap_bucket_1000_5000__pick_type_main",
+      "conditions": {
+        "odds_bucket": "1.6-1.8",
+        "rating_gap_bucket": "1000-5000",
+        "pick_type": "MAIN"
+      },
+      "meta": {
+        "dimensions": "odds_bucket + rating_gap_bucket + pick_type",
+        "bets": 39,
+        "wins": 35,
+        "profit": 21.83,
+        "roi": 0.5597435897435897,
+        "roi_vs_baseline": 0.35461585251731237,
+        "hitrate": 0.8974358974358975,
+        "avg_odds": 1.7376923076923076,
+        "avg_prob_selected": 0.6695384615384615,
+        "avg_value": 1.1639848717948718,
+        "avg_strength": 3.6084825641025637,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_prob_bucket_70pctplus__value_bucket_1_15_1_30",
+      "conditions": {
+        "prob_bucket": "70%+",
+        "value_bucket": "1.15-1.30"
+      },
+      "meta": {
+        "dimensions": "prob_bucket + value_bucket",
+        "bets": 36,
+        "wins": 33,
+        "profit": 17.59,
+        "roi": 0.4886111111111111,
+        "roi_vs_baseline": 0.28348337388483374,
+        "hitrate": 0.9166666666666666,
+        "avg_odds": 1.6202777777777777,
+        "avg_prob_selected": 0.7598055555555555,
+        "avg_value": 1.2263816666666667,
+        "avg_strength": 4.02504111111111,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_odds_bucket_1_6_1_8__rating_gap_bucket_1000_5000",
+      "conditions": {
+        "odds_bucket": "1.6-1.8",
+        "rating_gap_bucket": "1000-5000"
+      },
+      "meta": {
+        "dimensions": "odds_bucket + rating_gap_bucket",
+        "bets": 42,
+        "wins": 36,
+        "profit": 20.45,
+        "roi": 0.4869047619047619,
+        "roi_vs_baseline": 0.28177702467848453,
+        "hitrate": 0.8571428571428571,
+        "avg_odds": 1.735,
+        "avg_prob_selected": 0.6652142857142858,
+        "avg_value": 1.154707380952381,
+        "avg_strength": 3.3507338095238093,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_market_support_support__value_bucket_1_15_1_30",
+      "conditions": {
+        "market_support": "SUPPORT",
+        "value_bucket": "1.15-1.30"
+      },
+      "meta": {
+        "dimensions": "market_support + value_bucket",
+        "bets": 35,
+        "wins": 29,
+        "profit": 16.22,
+        "roi": 0.4634285714285714,
+        "roi_vs_baseline": 0.25830083420229405,
+        "hitrate": 0.8285714285714286,
+        "avg_odds": 1.8125714285714285,
+        "avg_prob_selected": 0.6892,
+        "avg_value": 1.227558,
+        "avg_strength": 3.6790588571428566,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_competition_spain",
+      "conditions": {
+        "competition": "Spain"
+      },
+      "meta": {
+        "dimensions": "competition",
+        "bets": 76,
+        "wins": 60,
+        "profit": 34.87,
+        "roi": 0.4588157894736842,
+        "roi_vs_baseline": 0.2536880522474068,
+        "hitrate": 0.7894736842105263,
+        "avg_odds": 1.8325000000000002,
+        "avg_prob_selected": 0.6548552631578947,
+        "avg_value": 1.1859422368421053,
+        "avg_strength": 3.23759447368421,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_competition_spain__pick_type_main",
+      "conditions": {
+        "competition": "Spain",
+        "pick_type": "MAIN"
+      },
+      "meta": {
+        "dimensions": "competition + pick_type",
+        "bets": 62,
+        "wins": 47,
+        "profit": 28.44,
+        "roi": 0.45870967741935487,
+        "roi_vs_baseline": 0.2535819401930775,
+        "hitrate": 0.7580645161290323,
+        "avg_odds": 1.8901612903225806,
+        "avg_prob_selected": 0.6571129032258064,
+        "avg_value": 1.2243643548387098,
+        "avg_strength": 3.968664193548387,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_weekday_saturday__prob_bucket_65_70pct",
+      "conditions": {
+        "weekday": "Saturday",
+        "prob_bucket": "65-70%"
+      },
+      "meta": {
+        "dimensions": "weekday + prob_bucket",
+        "bets": 45,
+        "wins": 40,
+        "profit": 20.42,
+        "roi": 0.45377777777777784,
+        "roi_vs_baseline": 0.24865004055150047,
+        "hitrate": 0.8888888888888888,
+        "avg_odds": 1.6506666666666667,
+        "avg_prob_selected": 0.6747111111111112,
+        "avg_value": 1.1129082222222224,
+        "avg_strength": 2.542206222222222,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_odds_bucket_1_6_1_8__strength_bucket_3plus",
+      "conditions": {
+        "odds_bucket": "1.6-1.8",
+        "strength_bucket": "3+"
+      },
+      "meta": {
+        "dimensions": "odds_bucket + strength_bucket",
+        "bets": 73,
+        "wins": 62,
+        "profit": 33.03,
+        "roi": 0.45246575342465756,
+        "roi_vs_baseline": 0.2473380161983802,
+        "hitrate": 0.8493150684931506,
+        "avg_odds": 1.7015068493150685,
+        "avg_prob_selected": 0.6746575342465754,
+        "avg_value": 1.1481339726027397,
+        "avg_strength": 3.4256739726027394,
+        "generated_at": "2026-06-08T17:15:58"
+      }
+    },
+    {
+      "name": "strong_rating_gap_600plus__odds_1_6_2_0__selection_home",
+      "conditions": {
+        "rating_gap_bucket": "500-1000",
+        "odds_bucket": "1.6-1.8",
+        "selection": "HOME"
+      },
+      "meta": {
+        "dimensions": "rating_gap_bucket + odds_bucket + selection",
+        "source": "bet365_picks_evaluated",
+        "bets": 49,
+        "wins": 34,
+        "profit_per_bet": 0.117,
+        "roi": 0.117,
+        "hitrate": 0.694,
+        "avg_odds": 1.7,
+        "note": "HOME picks met rating_gap 600-900, odds 1.60-1.80. Bevestigd in Bet365 data april-juni 2026.",
+        "generated_at": "2026-06-24T17:43:07"
+      }
+    },
+    {
+      "name": "strong_rating_gap_900plus__odds_1_4_1_8__selection_away",
+      "conditions": {
+        "rating_gap_bucket": "1000-5000",
+        "odds_bucket": "1.6-1.8",
+        "selection": "AWAY"
+      },
+      "meta": {
+        "dimensions": "rating_gap_bucket + odds_bucket + selection",
+        "source": "bet365_picks_evaluated",
+        "bets": 32,
+        "wins": 26,
+        "profit_per_bet": 0.381,
+        "roi": 0.381,
+        "hitrate": 0.813,
+        "avg_odds": 1.7,
+        "note": "AWAY picks met rating_gap 900+, odds 1.60-1.80. Sterkste AWAY segment in Bet365 data.",
+        "generated_at": "2026-06-24T17:43:07"
+      }
+    },
+    {
+      "name": "strong_rating_gap_900plus__odds_below_1_6__selection_away",
+      "conditions": {
+        "rating_gap_bucket": "1000-5000",
+        "odds_bucket": "1.4-1.6",
+        "selection": "AWAY"
+      },
+      "meta": {
+        "dimensions": "rating_gap_bucket + odds_bucket + selection",
+        "source": "bet365_picks_evaluated",
+        "bets": 30,
+        "wins": 27,
+        "profit_per_bet": 0.363,
+        "roi": 0.363,
+        "hitrate": 0.9,
+        "avg_odds": 1.5,
+        "note": "AWAY picks met rating_gap 900+, korte odds <1.60. Hoge hitrate, bevestigd in Bet365 data.",
+        "generated_at": "2026-06-24T17:43:07"
+      }
+    },
+    {
+      "name": "strong_rating_gap_600plus__odds_1_8_2_0__selection_home",
+      "conditions": {
+        "rating_gap_bucket": "500-1000",
+        "odds_bucket": "1.8-2.2",
+        "selection": "HOME"
+      },
+      "meta": {
+        "dimensions": "rating_gap_bucket + odds_bucket + selection",
+        "source": "bet365_picks_evaluated",
+        "bets": 15,
+        "wins": 14,
+        "profit_per_bet": 0.71,
+        "roi": 0.71,
+        "hitrate": 0.933,
+        "avg_odds": 1.92,
+        "note": "HOME, rating_gap 600-900, odds 1.80-2.00. Klein maar sterk segment. Voorzichtig gebruiken.",
+        "generated_at": "2026-06-24T17:43:07"
+      }
+    },
+    {
+      "name": "strong_unibet_home_rating_gap_500plus__odds_1_6_2_5",
+      "conditions": {
+        "rating_gap_bucket": "500-1000",
+        "odds_bucket": "1.6-1.8",
+        "selection": "HOME"
+      },
+      "meta": {
+        "dimensions": "rating_gap_bucket + odds_bucket + selection",
+        "source": "unibet_oddspedia_benchmark",
+        "bets": 306,
+        "wins": 182,
+        "profit_per_bet": 0.052,
+        "roi": 0.052,
+        "hitrate": 0.595,
+        "avg_odds": 1.776,
+        "note": "Bevestigd in Unibet benchmark (volledig seizoen 2025/2026). Beste autotune kandidaat: HOME, gap>=500, odds 1.60-2.50, prob>=0.60.",
+        "generated_at": "2026-06-24T17:43:07"
+      }
+    }
+  ]
+}
