@@ -2162,11 +2162,17 @@ def render_all_matches() -> None:
     """
     import datetime as _dt
 
-    col1, col2 = st.columns([1, 2])
+    col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
         day = st.date_input("Dag", value=_dt.date.today())
     with col2:
         only_agree = st.checkbox("Alleen waar ECI en markt het eens zijn", value=False)
+    with col3:
+        min_value = st.number_input(
+            "Min. value (odds x ECI-kans)", min_value=0.0, max_value=3.0,
+            value=0.0, step=0.05,
+            help="De oorspronkelijke regel: value > 1.10. Let op de waarschuwing onder de tabel.",
+        )
 
     try:
         source = query_df("""
@@ -2190,7 +2196,10 @@ def render_all_matches() -> None:
         df = annotate_all_matches(matches, picks)
         if only_agree:
             df = df[df["eens"]]
+        if min_value > 0:
+            df = df[df["value_eci_fav"] >= min_value]
 
+        df["value_boven_1_10"] = df["value_eci_fav"] >= 1.10
         n_actief = int((df["pick_status"] == "ACTIEF").sum())
         n_vervallen = int((df["pick_status"] == "vervallen").sum())
         c1, c2, c3, c4 = st.columns(4)
@@ -2198,7 +2207,11 @@ def render_all_matches() -> None:
         c2.metric("Actieve picks", n_actief)
         c3.metric("Vervallen picks", n_vervallen,
                   help="Was pick in een eerdere run, maar niet meer in de laatste run.")
-        c4.metric("ECI eens met markt", f"{df['eens'].mean():.0%}" if len(df) else "—")
+        c4.metric(
+            "Value > 1.10",
+            int(df["value_boven_1_10"].sum()) if len(df) else 0,
+            help="De oorspronkelijke regel van je vriend: odds x ECI-kans > 1.10.",
+        )
 
         st.caption(
             "eci_kans = ECI's kans op zijn eigen favoriet. markt_kans = ge-devigde "
@@ -2209,7 +2222,8 @@ def render_all_matches() -> None:
         cols = [
             "kickoff_at", "competition", "home_team", "away_team",
             "eci_favoriet", "eci_kans", "markt_favoriet", "markt_kans",
-            "eci_min_markt", "odds_eci_fav", "value_eci_fav", "rating_gap",
+            "eci_min_markt", "odds_eci_fav", "value_eci_fav", "value_boven_1_10",
+            "rating_gap",
             "home_drift_pct", "away_drift_pct", "n_snapshots",
             "pick_status", "selection", "pick_tier", "rule_strength_adj", "run_id",
         ]
@@ -2218,6 +2232,16 @@ def render_all_matches() -> None:
             ["pick_status", "markt_kans"], ascending=[True, False]
         )
         st.dataframe(view_df, use_container_width=True, hide_index=True)
+
+        if len(df) and df["value_boven_1_10"].any():
+            hoog = df[df["value_boven_1_10"]]
+            st.caption(
+                f"{len(hoog)} wedstrijden met value > 1.10. Ter herinnering uit ons "
+                "eigen onderzoek: een hoge value betekent dat ECI optimistischer is "
+                "dan de markt, en juist die groep leverde historisch -12,4% op "
+                "(tegen -6,2% voor blind op de favoriet). De value-score meet "
+                "onenigheid met de markt, niet gevonden waarde."
+            )
 
         with st.expander("Waarom werd een wedstrijd geen pick?", expanded=False):
             st.markdown(

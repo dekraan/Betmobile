@@ -115,17 +115,66 @@ def normalize_model_probs(
     return df
 
 
+def shin_z(imp: np.ndarray, max_iter: int = 60, tol: float = 1e-10) -> np.ndarray:
+    """
+    Schat Shin's z: het aandeel "geinformeerde inzet" in de markt.
+
+    Shin (1993) modelleert de marge als gevolg van bookmakers die zich
+    indekken tegen beter geinformeerde spelers. Dat verklaart waarom de
+    marge NIET gelijkmatig over de uitkomsten verdeeld is: op longshots zit
+    meer marge dan op favorieten. De proportionele methode negeert dat en
+    kent daardoor systematisch te weinig kans toe aan favorieten.
+
+    imp: array (n x k) met 1/odds per uitkomst.
+    """
+    total = imp.sum(axis=1)
+    z = np.zeros(len(imp))
+    k = imp.shape[1]
+
+    for _ in range(max_iter):
+        disc = z[:, None] ** 2 + 4.0 * (1.0 - z)[:, None] * (imp ** 2) / total[:, None]
+        p = (np.sqrt(np.clip(disc, 0, None)) - z[:, None]) / (
+            2.0 * np.clip(1.0 - z, 1e-9, None)[:, None]
+        )
+        s = p.sum(axis=1)
+        z_new = np.clip(z + (s - 1.0) / max(k - 1.0, 1e-9), 0.0, 0.9)
+        if np.max(np.abs(z_new - z)) < tol:
+            z = z_new
+            break
+        z = z_new
+    return z
+
+
+def devig_shin(odds: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Ge-devigde kansen volgens Shin. Geeft (kansen, z) terug."""
+    imp = 1.0 / odds
+    total = imp.sum(axis=1)
+    z = shin_z(imp)
+    disc = z[:, None] ** 2 + 4.0 * (1.0 - z)[:, None] * (imp ** 2) / total[:, None]
+    p = (np.sqrt(np.clip(disc, 0, None)) - z[:, None]) / (
+        2.0 * np.clip(1.0 - z, 1e-9, None)[:, None]
+    )
+    return p / p.sum(axis=1, keepdims=True), z
+
+
 def compute_market_probs(
     df: pd.DataFrame,
     odds_cols: tuple[str, str, str] = ("odds_home", "odds_draw", "odds_away"),
     out_cols: tuple[str, str, str] = ("mkt_home", "mkt_draw", "mkt_away"),
+    method: str = "shin",
 ) -> pd.DataFrame:
     """
-    Bereken ge-devigde marktkansen uit 1X2 odds (proportionele methode).
+    Bereken ge-devigde marktkansen uit 1X2 odds.
 
-    imp = 1/odds per uitkomst; marktkans = imp / som(imp).
-    De kolom market_overround (~1.05 bij 5% marge) blijft beschikbaar als
-    diagnostiek. Rijen met een ongeldige odd (<= 1.01) krijgen NaN.
+    method="shin"         : houdt er rekening mee dat de marge zwaarder op
+                            longshots drukt. Standaard, omdat de
+                            proportionele methode favorieten onderschat -
+                            dat gaf in de eerste tier-poging fantoom-EV.
+    method="proportional" : imp / som(imp). Bewaard om oude resultaten te
+                            kunnen reproduceren.
+
+    Extra kolommen: market_overround en (bij Shin) market_shin_z.
+    Rijen met een ongeldige odd (<= 1.01) krijgen NaN.
     """
     df = df.copy()
     odds = df[list(odds_cols)].apply(pd.to_numeric, errors="coerce")
@@ -134,10 +183,28 @@ def compute_market_probs(
     imp = (1.0 / odds).where(valid)
     total = imp.sum(axis=1).where(valid)
 
-    for out_col, col in zip(out_cols, odds_cols):
-        df[out_col] = imp[col] / total
+    if method == "proportional":
+        for out_col, col in zip(out_cols, odds_cols):
+            df[out_col] = imp[col] / total
+        df["market_overround"] = total
+        return df
 
+    if method != "shin":
+        raise ValueError(f"onbekende devig-methode: {method}")
+
+    arr = odds.to_numpy(dtype=float)
+    ok = valid.to_numpy()
+    probs = np.full(arr.shape, np.nan)
+    z_all = np.full(len(arr), np.nan)
+    if ok.any():
+        p, z = devig_shin(arr[ok])
+        probs[ok] = p
+        z_all[ok] = z
+
+    for i, out_col in enumerate(out_cols):
+        df[out_col] = probs[:, i]
     df["market_overround"] = total
+    df["market_shin_z"] = z_all
     return df
 
 

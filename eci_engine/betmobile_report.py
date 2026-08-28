@@ -74,6 +74,8 @@ SETTLED_QUESTIONS = [
      "JA", "monotonie 100%, wel te extreme kansen aan de uiteinden"),
     ("Is ECI te traag met ratingaanpassing?",
      "JA, licht", "momentum-slope t=+2.73; vorm-3 niet significant"),
+    ("Bestaat er een beter koopmoment voor de aftrap?",
+     "NEE, klein", "vroeg ~1,6pt beter maar andere wedstrijden per venster"),
 ]
 
 
@@ -331,6 +333,73 @@ def section_market_comparison() -> dict:
     )
 
     return {"margins": marge, "prices": prijs, "pairs": len(b)}
+
+
+# =====================================================================
+# 3b. TIMING: WANNEER KOPEN?
+# =====================================================================
+
+def section_timing() -> dict:
+    """
+    Op welk moment voor de aftrap kreeg je de beste prijs?
+
+    Draait timing_report door en toont alleen de kern. Uitkomst tot nu toe:
+    de prijs verandert gemiddeld nauwelijks, maar vroeg kopen kost in elk
+    geval niets en scheelt mogelijk ~1,5 punt.
+    """
+    print_header("3b. TIMING: WANNEER KOPEN?")
+    try:
+        from timing_report import (
+            load_picks as _lp, load_link as _ll, load_kickoffs as _lk,
+            load_snapshots as _ls, build_closing as _bc,
+            price_at_windows, build_timing_frame, summarize_windows,
+            summarize_by_class,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"timing_report niet beschikbaar: {exc}")
+        return {}
+
+    try:
+        picks = _lp()
+        if picks.empty:
+            print("Geen gesettelde picks.")
+            return {}
+        link, _ = _ll()
+        matched = picks.merge(link, on="match_id", how="inner")
+        fids = sorted(set(int(x) for x in matched["fixture_id"].dropna()))
+        if not fids:
+            print("Geen picks gekoppeld aan een fixture.")
+            return {}
+
+        kickoffs = _lk(fids)
+        snaps = _ls(fids)
+        closing = _bc(snaps, kickoffs)
+        windows = price_at_windows(snaps, kickoffs)
+        if windows.empty:
+            print("Geen prijsverloop beschikbaar.")
+            return {}
+
+        df = build_timing_frame(picks, link, windows, closing, dedupe=True)
+        if df.empty:
+            print("Geen picks met bruikbaar prijsverloop.")
+            return {}
+
+        summary = summarize_windows(df)
+        print_table("3b-1. PRIJS EN CLV PER KOOPMOMENT", summary)
+        print(
+            "aandeel_beter_dan_close daalt richting de aftrap omdat je dan\n"
+            "steeds meer DE closing line zelf koopt - dat is meetkunde, geen edge.\n"
+            "De echte vraag is of het vroegste venster ruim boven 50% uitkomt."
+        )
+
+        per_class = summarize_by_class(df)
+        if not per_class.empty:
+            print_table("3b-2. VROEG VS LAAT PER COMPETITIEKLASSE", per_class)
+
+        return {"timing": summary, "timing_by_class": per_class}
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] timing-sectie overgeslagen: {exc}")
+        return {}
 
 
 # =====================================================================
@@ -603,6 +672,8 @@ def section_verdict(health: dict, market: dict, picks_res: dict) -> None:
             "Pinnacle's kans positief uitpakt; dat is de enige plek waar nog "
             "onbenutte ruimte zou kunnen zitten."
         )
+    if market.get("prices") is None and not lines:
+        pass
     if picks_res.get("total") is not None and not picks_res["total"].empty:
         t = picks_res["total"]
         oos = t[t["segment"].str.startswith("SINDS FREEZE")]
@@ -652,6 +723,12 @@ def run(source: str, schema: str, refresh: bool, export_csv: bool) -> None:
         market = {}
 
     try:
+        timing = section_timing()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] timing overgeslagen: {exc}")
+        timing = {}
+
+    try:
         picks = load_picks_with_clv()
     except Exception as exc:  # noqa: BLE001
         print(f"[warn] picks laden mislukt: {exc}")
@@ -671,6 +748,8 @@ def run(source: str, schema: str, refresh: bool, export_csv: bool) -> None:
             "report_market_prices": market.get("prices"),
             "report_picks": picks_res.get("total"),
             "report_benchmarks": bench,
+            "report_timing": timing.get("timing"),
+            "report_timing_by_class": timing.get("timing_by_class"),
         }
         for name, table in tables.items():
             if table is not None and not table.empty:
