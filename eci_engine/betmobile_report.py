@@ -331,12 +331,17 @@ def section_market_comparison() -> dict:
     rows = []
     for lbl, col in [("thuis", "h"), ("gelijk", "d"), ("uit", "a")]:
         edge = p_pin[col].to_numpy() * b[col].to_numpy() - 1.0
+        # Shin geeft NaN bij ongeldige odds; met np.mean zou één zo'n rij de
+        # hele kolom op NaN zetten (dat gebeurde in de vorige versie).
+        valid = np.isfinite(edge)
+        e = edge[valid]
         rows.append({
             "uitkomst": lbl,
-            "n": len(edge),
-            "gem_edge_vs_pinnacle": float(np.mean(edge)),
-            "aandeel_edge_positief": float(np.mean(edge > 0)),
-            "beste_1pct": float(np.percentile(edge, 99)),
+            "n": int(valid.sum()),
+            "ongeldig": int((~valid).sum()),
+            "gem_edge_vs_pinnacle": float(e.mean()) if len(e) else np.nan,
+            "aandeel_edge_positief": float((e > 0).mean()) if len(e) else np.nan,
+            "beste_1pct": float(np.percentile(e, 99)) if len(e) else np.nan,
         })
     prijs = pd.DataFrame(rows)
     print_table("3b. BET365-PRIJS GEMETEN TEGEN PINNACLE-KANS", prijs)
@@ -429,7 +434,7 @@ def load_picks_with_clv() -> pd.DataFrame:
     picks = q(f"""
         SELECT match_id, competition, date, date_ts, selection, outcome,
                odds_home, odds_draw, odds_away, pick_type, pick_tier,
-               rule_strength_adj
+               rule_strength_adj, estimated_ev, tier_version
         FROM public.{src}
         WHERE outcome IN ('WIN','LOSS') AND selection IN ('HOME','DRAW','AWAY')
     """)
@@ -529,7 +534,34 @@ def section_picks(picks: pd.DataFrame) -> dict:
     print_table("4a. TOTAAL EN PERIODE", total)
 
     if "pick_tier" in picks.columns and picks["pick_tier"].notna().any():
-        print_table("4b. PER TIER", summarize_picks(picks[picks["pick_tier"].notna()], "pick_tier", "tier"))
+        tiered = picks[picks["pick_tier"].notna()].copy()
+        # De kolom pick_tier bevat labels uit TWEE systemen: de oude
+        # segment-gebaseerde tiers (A+, A, A-, B, C, X) en de nieuwe
+        # EV-gebaseerde (A+, A, B, C, D). Ze op één hoop gooien vergelijkt
+        # appels met peren; tier_version zegt onder welk regime een pick viel.
+        if "tier_version" in tiered.columns and tiered["tier_version"].notna().any():
+            nieuw = tiered[tiered["tier_version"].notna()]
+            oud = tiered[tiered["tier_version"].isna()]
+            if not nieuw.empty:
+                print_table(
+                    "4b-1. PER TIER - NIEUWE EV-DEFINITIE",
+                    summarize_picks(nieuw, "pick_tier", "tier"),
+                )
+            if not oud.empty:
+                print_table(
+                    "4b-2. PER TIER - OUDE SEGMENTDEFINITIE (historisch)",
+                    summarize_picks(oud, "pick_tier", "tier"),
+                )
+                print(
+                    "De oude tiers kwamen uit auto-discovery en zijn hier alleen\n"
+                    "ter historische referentie; ze zeggen niets over de nieuwe."
+                )
+        else:
+            print_table("4b. PER TIER", summarize_picks(tiered, "pick_tier", "tier"))
+            print(
+                "Nog geen picks met tier_version: alle tiers hier komen uit de\n"
+                "oude segmentdefinitie."
+            )
     if "pick_type" in picks.columns:
         print_table("4c. PER PICK TYPE", summarize_picks(picks, "pick_type", "type"))
 

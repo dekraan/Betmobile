@@ -354,7 +354,8 @@ def prepare_match_frame(
         )
 
     df = normalize_model_probs(df, prob_cols)
-    df = compute_market_probs(df)
+    # z gepoold per competitie: stabieler dan per wedstrijd uit 3 getallen.
+    df = compute_market_probs(df, pool_by="competition")
 
     mask_date = df["date_dt"].notna()
     mask_result = df["result_code_norm"].isin(["H", "D", "A"])

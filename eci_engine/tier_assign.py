@@ -41,6 +41,25 @@ from config import OUTPUT_DIR
 DEFAULT_TIER_PATH = OUTPUT_DIR / "calibration" / "tier_definition.json"
 
 _CACHE: dict | None = None
+_ECI_CACHE: dict | None = None
+_ECI_TRIED = False
+
+
+def load_eci_recalibration() -> dict | None:
+    """Laad de monotone vertaaltabel voor ECI-kansen (indien aanwezig)."""
+    global _ECI_CACHE, _ECI_TRIED
+    if _ECI_TRIED:
+        return _ECI_CACHE
+    _ECI_TRIED = True
+    try:
+        from isotonic import load_calibration_file, DEFAULT_ECI_CALIB_NAME
+
+        _ECI_CACHE = load_calibration_file(
+            OUTPUT_DIR / "calibration" / DEFAULT_ECI_CALIB_NAME
+        )
+    except Exception:  # noqa: BLE001
+        _ECI_CACHE = None
+    return _ECI_CACHE
 
 
 def load_tier_definition(path: str | Path | None = None) -> dict | None:
@@ -160,6 +179,15 @@ def classify_row(row: pd.Series, tier_def: dict) -> dict:
     if eci_prob is not None and eci_prob > 1.2:
         eci_prob /= 100.0
 
+    # ECI claimt te extreme kansen (86% waar 81% gebeurt). De monotone
+    # vertaaltabel maakt het getoonde getal eerlijk; de rangorde blijft gelijk.
+    eci_prob_raw = eci_prob
+    eci_cal = load_eci_recalibration()
+    if eci_cal and eci_prob is not None:
+        from isotonic import apply_isotonic
+
+        eci_prob = float(apply_isotonic(np.array([eci_prob]), eci_cal.get("knots") or [])[0])
+
     # Marktkans uit alle drie de odds, ge-devigd volgens Shin (dezelfde
     # methode als de rest van het systeem; proportioneel onderschatte de
     # favoriet systematisch).
@@ -193,6 +221,8 @@ def classify_row(row: pd.Series, tier_def: dict) -> dict:
     competition = str(row.get("competition") or "onbekend")
 
     return {
+        "eci_prob_raw": eci_prob_raw,
+        "eci_prob_calibrated": eci_prob,
         "pick_tier": tier,
         "pick_stars": stars,
         "estimated_ev": ev,
@@ -226,7 +256,7 @@ def assign_tiers(picks: pd.DataFrame, path: str | Path | None = None) -> pd.Data
     out = picks.copy()
     res = [classify_row(r, tier_def) for _, r in out.iterrows()]
     for key in ("pick_tier", "pick_stars", "estimated_ev", "tier_version",
-                "classification_reason"):
+                "classification_reason", "eci_prob_raw", "eci_prob_calibrated"):
         out[key] = [r[key] for r in res]
     return out
 

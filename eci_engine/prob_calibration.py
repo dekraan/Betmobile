@@ -145,6 +145,44 @@ def shin_z(imp: np.ndarray, max_iter: int = 60, tol: float = 1e-10) -> np.ndarra
     return z
 
 
+def pooled_shin_z(odds: np.ndarray, groups: np.ndarray | None = None,
+                  min_n: int = 200) -> np.ndarray:
+    """
+    Schat z per groep (bijv. competitie) in plaats van per wedstrijd.
+
+    Per wedstrijd wordt z uit slechts drie getallen geschat; dat geeft
+    ongeveer 12% relatieve ruis. z is echter een eigenschap van de MARKT
+    (hoeveel geinformeerd geld er rondgaat), niet van de losse wedstrijd.
+    Poolen over een competitie maakt de schatting stabieler.
+
+    Groepen met minder dan min_n wedstrijden vallen terug op het algemene
+    gemiddelde.
+    """
+    imp = 1.0 / odds
+    z_row = shin_z(imp)
+    out = np.full(len(odds), float(np.nanmedian(z_row)))
+    if groups is None:
+        return out
+    g = pd.Series(groups)
+    for name, idx in g.groupby(g, observed=True).groups.items():
+        pos = g.index.get_indexer(pd.Index(idx))
+        if len(pos) >= min_n:
+            out[pos] = float(np.nanmedian(z_row[pos]))
+    return out
+
+
+def probs_from_z(odds: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Bereken Shin-kansen bij een gegeven (bijv. gepoolde) z."""
+    imp = 1.0 / odds
+    total = imp.sum(axis=1)
+    z = np.clip(np.asarray(z, dtype=float), 0.0, 0.9)
+    disc = z[:, None] ** 2 + 4.0 * (1.0 - z)[:, None] * (imp ** 2) / total[:, None]
+    p = (np.sqrt(np.clip(disc, 0, None)) - z[:, None]) / (
+        2.0 * np.clip(1.0 - z, 1e-9, None)[:, None]
+    )
+    return p / p.sum(axis=1, keepdims=True)
+
+
 def devig_shin(odds: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Ge-devigde kansen volgens Shin. Geeft (kansen, z) terug."""
     imp = 1.0 / odds
@@ -162,6 +200,7 @@ def compute_market_probs(
     odds_cols: tuple[str, str, str] = ("odds_home", "odds_draw", "odds_away"),
     out_cols: tuple[str, str, str] = ("mkt_home", "mkt_draw", "mkt_away"),
     method: str = "shin",
+    pool_by: str | None = None,
 ) -> pd.DataFrame:
     """
     Bereken ge-devigde marktkansen uit 1X2 odds.
@@ -197,7 +236,12 @@ def compute_market_probs(
     probs = np.full(arr.shape, np.nan)
     z_all = np.full(len(arr), np.nan)
     if ok.any():
-        p, z = devig_shin(arr[ok])
+        if pool_by and pool_by in df.columns:
+            # z gepoold per groep: stabieler dan per wedstrijd uit 3 getallen.
+            z = pooled_shin_z(arr[ok], df.loc[valid, pool_by].to_numpy())
+            p = probs_from_z(arr[ok], z)
+        else:
+            p, z = devig_shin(arr[ok])
         probs[ok] = p
         z_all[ok] = z
 

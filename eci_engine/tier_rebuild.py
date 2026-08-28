@@ -64,6 +64,8 @@ TIER_CONFIG_PATH = TIER_DIR / "tier_definition.json"
 
 # Prijsklassen waarop het rendement gemeten wordt (op de odds zelf).
 from shared_buckets import ODDS_BINS_FINE as ODDS_BINS, ODDS_LABELS_FINE as ODDS_LABELS
+from isotonic import (fit_isotonic, apply_isotonic, fit_eci_recalibration,
+                      recalibrate_eci, save_calibration, DEFAULT_ECI_CALIB_NAME)
 
 # Krimp naar het algemene gemiddelde: een prijsklasse met weinig
 # waarnemingen krijgt niet zijn volle (toevallige) rendement toebedeeld.
@@ -148,6 +150,47 @@ def fit_ev_curve(train: pd.DataFrame) -> dict:
             "table": grp, "overall": overall}
 
 
+def fit_ev_curve_isotonic(train: pd.DataFrame) -> dict:
+    """
+    Zelfde vraag als fit_ev_curve, maar zonder handmatige bucketgrenzen.
+
+    De bucketversie sprong tot 5,9 procentpunt bij een grens: odds 1.79 kreeg
+    een heel andere EV dan 1.81, puur omdat de grens daar lag. Isotone
+    regressie legt de breekpunten waar de data ze legt.
+
+    Dalende beperking: volgens de favourite-longshot bias hoort het rendement
+    af te nemen naarmate de odds hoger worden.
+    """
+    rows = []
+    for i, side in enumerate(["home", "draw", "away"]):
+        odds = train[f"odds_{side}"].to_numpy(float)
+        hit = (train["y_idx"].to_numpy(int) == i).astype(float)
+        rows.append(pd.DataFrame({
+            "odds": odds,
+            "profit": np.where(hit > 0, odds - 1.0, -1.0),
+        }))
+    long = pd.concat(rows, ignore_index=True).dropna()
+    long = long[long["odds"] > 1.01]
+
+    overall = float(long["profit"].mean())
+    # Fit op log(odds): daar liggen de prijsklassen gelijkmatiger verdeeld.
+    knots = fit_isotonic(
+        np.log(long["odds"].to_numpy(float)),
+        long["profit"].to_numpy(float),
+        increasing=False,
+    )
+    return {"knots": knots, "overall": overall, "method": "isotonic"}
+
+
+def lookup_ev_isotonic(odds: np.ndarray, knots: list, overall: float) -> np.ndarray:
+    o = np.asarray(odds, dtype=float)
+    out = np.full(len(o), overall, dtype=float)
+    ok = np.isfinite(o) & (o > 1.01)
+    if ok.any() and knots:
+        out[ok] = apply_isotonic(np.log(o[ok]), knots)
+    return out
+
+
 def lookup_ev(odds: np.ndarray, curve: list[dict], overall: float) -> np.ndarray:
     """Zoek per weddenschap de geschatte EV op basis van de prijsklasse."""
     out = np.full(len(odds), overall, dtype=float)
@@ -185,7 +228,10 @@ def compute_ev(df: pd.DataFrame, curve: list[dict], overall: float,
     rows = np.arange(len(df))
     sel_odds = odds[rows, sel]
 
-    ev = lookup_ev(sel_odds, curve, overall)
+    if isinstance(curve, dict) and curve.get("method") == "isotonic":
+        ev = lookup_ev_isotonic(sel_odds, curve.get("knots"), overall)
+    else:
+        ev = lookup_ev(sel_odds, curve, overall)
     agrees = eci.argmax(axis=1) == sel
     if eci_bonus:
         ev = ev + np.where(agrees, eci_bonus, 0.0)
@@ -257,7 +303,11 @@ def validate_curve(test: pd.DataFrame, curve: list[dict], overall: float) -> tup
     long = pd.concat(rows, ignore_index=True).dropna()
     long = long[long["odds"] > 1.01]
     long["bucket"] = pd.cut(long["odds"], bins=ODDS_BINS, labels=ODDS_LABELS)
-    long["voorspeld"] = lookup_ev(long["odds"].to_numpy(float), curve, overall)
+    if isinstance(curve, dict) and curve.get("method") == "isotonic":
+        long["voorspeld"] = lookup_ev_isotonic(
+            long["odds"].to_numpy(float), curve.get("knots"), overall)
+    else:
+        long["voorspeld"] = lookup_ev(long["odds"].to_numpy(float), curve, overall)
 
     grp = (
         long.groupby("bucket", observed=True)
@@ -293,7 +343,7 @@ def validate_curve(test: pd.DataFrame, curve: list[dict], overall: float) -> tup
 
 def run(source: str, schema: str, train_frac: float, refresh: bool,
         export_csv: bool, with_eci: bool, eci_bonus: float,
-        df: pd.DataFrame | None = None) -> dict:
+        df: pd.DataFrame | None = None, use_isotonic: bool = True) -> dict:
     print_header("TIERS OPNIEUW OPBOUWEN OP GESCHATTE EV")
     print(
         "Oude tiers: segmenten uit auto-discovery -> optimaliseren op\n"
@@ -318,6 +368,7 @@ def run(source: str, schema: str, train_frac: float, refresh: bool,
 
     # ---- 1. Rendement per prijsklasse op de TRAIN-helft ----
     fit = fit_ev_curve(train)
+    iso = fit_ev_curve_isotonic(train) if use_isotonic else None
     tbl = fit["table"][["bucket", "n", "gem_odds", "hitrate", "ruw_rendement", "ev"]].copy()
     tbl["bucket"] = tbl["bucket"].astype(str)
     print_table("1. RENDEMENT PER PRIJSKLASSE (op trainset)", tbl)
@@ -338,11 +389,19 @@ def run(source: str, schema: str, train_frac: float, refresh: bool,
         print(f"\n[eci] ECI-instemming krijgt een opslag van {bonus:+.3f} op de kans.")
 
     # ---- 2. Tiers op de TESTSET (eerlijke beoordeling) ----
-    test_ev = compute_ev(test, fit["curve"], fit["overall"], eci_bonus=bonus)
+    ev_source = iso if use_isotonic and iso else fit["curve"]
+    ev_overall = iso["overall"] if use_isotonic and iso else fit["overall"]
+    if use_isotonic and iso:
+        print_header("1c. GLADDE EV-CURVE (isotoon, geen handmatige grenzen)")
+        for lo, val in iso["knots"][:: max(1, len(iso["knots"]) // 8)]:
+            print(f"  odds {np.exp(lo):>6.2f} -> EV {val:+.4f}")
+        print("Breekpunten liggen waar de data ze legt, niet op ronde getallen.")
+
+    test_ev = compute_ev(test, ev_source, ev_overall, eci_bonus=bonus)
     summary = tier_summary(test_ev)
     print_table("2. NIEUWE TIERS OP DE TESTSET", summary)
 
-    val_tbl, ok, msg = validate_curve(test, fit["curve"], fit["overall"])
+    val_tbl, ok, msg = validate_curve(test, ev_source, ev_overall)
     print_table("2b. VALIDATIE: VOORSPELD VS WERKELIJK PER PRIJSKLASSE (testset)", val_tbl)
     vals = summary[summary["telt_mee"]]["werkelijke_roi"].to_numpy(float)
     dalend = float((np.diff(vals) <= 0).mean()) if len(vals) > 1 else np.nan
@@ -370,6 +429,39 @@ def run(source: str, schema: str, train_frac: float, refresh: bool,
         f"[{best_tier['roi_lo']:+.2%}, {best_tier['roi_hi']:+.2%}]"
     )
 
+    # ---- 3b. ECI-hercalibratie (los van de tiers) ----
+    # ECI rangschikt correct maar claimt te extreme kansen. Een monotone
+    # vertaaltabel maakt het GETOONDE getal eerlijk zonder de rangorde te
+    # raken. Levert geen edge op; wel een kans die klopt.
+    eci_cal = fit_eci_recalibration(train)
+    eci_path = TIER_DIR / DEFAULT_ECI_CALIB_NAME
+    save_calibration(eci_cal, eci_path)
+
+    eci_raw = test[["mdl_home", "mdl_draw", "mdl_away"]].to_numpy(float)
+    eci_new = recalibrate_eci(eci_raw, eci_cal)
+    y_test = test["y_idx"].to_numpy(int)
+
+    def _ll(mat):
+        return float(-np.mean(np.log(np.clip(mat[np.arange(len(y_test)), y_test], 1e-9, None))))
+
+    print_header("3b. ECI-HERCALIBRATIE (alleen het getoonde getal)")
+    rows_cal = []
+    for lbl, mat in [("ECI ruw", eci_raw), ("ECI gekalibreerd", eci_new)]:
+        hoog = mat.max(axis=1)
+        raak = (mat.argmax(axis=1) == y_test).astype(float)
+        rows_cal.append({
+            "variant": lbl,
+            "logloss_test": _ll(mat),
+            "gem_geclaimd_favoriet": float(hoog.mean()),
+            "werkelijk_favoriet": float(raak.mean()),
+            "verschil": float(raak.mean() - hoog.mean()),
+        })
+    print(pd.DataFrame(rows_cal).round(4).to_string(index=False))
+    print(
+        "'verschil' hoort bij een eerlijke kans rond nul te liggen.\n"
+        f"[export] {eci_path}"
+    )
+
     # ---- 4. Bevriezen ----
     version = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     config = {
@@ -377,11 +469,13 @@ def run(source: str, schema: str, train_frac: float, refresh: bool,
         "fitted_at": datetime.now().isoformat(timespec="seconds"),
         "source": f"{schema}.{source}",
         "split_date": str(pd.Timestamp(split).date()),
-        "method": "realised_ev_by_price",
+        "method": "isotonic_ev_by_price" if (use_isotonic and iso) else "realised_ev_by_price",
         "ev_curve": fit["curve"],
-        "overall_ev": fit["overall"],
+        "ev_knots": (iso["knots"] if (use_isotonic and iso) else None),
+        "overall_ev": ev_overall,
         "tier_edges": [[n, (None if np.isinf(e) else float(e))] for n, e in TIER_EDGES],
         "eci_bonus": bonus,
+        "eci_recalibration": DEFAULT_ECI_CALIB_NAME,
         "validation": {
             "ordering_works": bool(ok),
             "note": msg,
@@ -420,11 +514,13 @@ def main() -> None:
     p.add_argument("--export-csv", action="store_true")
     p.add_argument("--with-eci", action="store_true",
                    help="Geef ECI-instemming een kleine opslag en kijk of het helpt")
+    p.add_argument("--buckets", action="store_true",
+                   help="Gebruik de oude handmatige odds-buckets in plaats van de gladde curve")
     p.add_argument("--eci-bonus", type=float, default=0.014,
                    help="Opslag bij ECI-instemming (default 0.014 = het gemeten residu)")
     a = p.parse_args()
     run(a.source, a.schema, a.train_frac, not a.no_refresh, a.export_csv,
-        a.with_eci, a.eci_bonus)
+        a.with_eci, a.eci_bonus, use_isotonic=not a.buckets)
 
 
 if __name__ == "__main__":
