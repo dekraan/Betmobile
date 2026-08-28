@@ -1396,7 +1396,7 @@ def annotate_all_matches(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
         # meer werd weggeschreven, is vervallen (bijv. odds bewogen).
         # picks_evaluated bevat alleen picks, dus "geen rij" = geen pick meer.
         df["pick_status"] = np.select(
-            [~df["is_pick"], df["actief_in_laatste_run"].fillna(False)],
+            [~df["is_pick"], df["actief_in_laatste_run"].astype(bool)],
             ["-", "ACTIEF"],
             default="vervallen",
         )
@@ -2256,7 +2256,7 @@ def render_all_matches() -> None:
         view_df = df[cols].sort_values(
             ["pick_status", "markt_kans"], ascending=[True, False]
         )
-        st.dataframe(view_df, use_container_width=True, hide_index=True)
+        st.dataframe(view_df, width="stretch", hide_index=True)
 
         if len(df) and df["value_boven_1_10"].any():
             hoog = df[df["value_boven_1_10"]]

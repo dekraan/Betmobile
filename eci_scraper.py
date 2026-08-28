@@ -201,9 +201,9 @@ class ECIScraper:
             logger.warning(f"Error parsing date '{raw_date}': {e}")
             return None
 
-
     def create_table(self):
-        """Create eci_data table if it doesn't exist"""
+        """Create ECI current-state and historical snapshot tables if they don't exist."""
+
         create_table_query = """
         CREATE TABLE IF NOT EXISTS public.eci_data
         (
@@ -225,10 +225,32 @@ class ECIScraper:
             CONSTRAINT eci_data_unique_match UNIQUE (date, home_team, away_team)
         )
         """
+
+        create_snapshot_table_query = """
+        CREATE TABLE IF NOT EXISTS public.eci_data_snapshots
+        (
+            snapshot_id BIGSERIAL PRIMARY KEY,
+            snapshot_at timestamp without time zone NOT NULL,
+            match_id character varying NOT NULL,
+            date character varying,
+            home_team character varying,
+            away_team character varying,
+            home_win_pct double precision,
+            draw_pct double precision,
+            away_win_pct double precision,
+            home_rating character varying,
+            away_rating character varying,
+            competition character varying,
+            eci_score character varying,
+            created_by character varying DEFAULT 'dekraan'
+        )
+        """
+
         with psycopg2.connect(**DB_CONFIG) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(create_table_query)
-                conn.commit()
+                cursor.execute(create_snapshot_table_query)
+            conn.commit()
 
     def load_known_team_names(self):
         """Laad alle eerder correct opgeslagen teamnamen uit de database."""
@@ -391,7 +413,8 @@ class ECIScraper:
             return pd.DataFrame()
 
     def save_to_database(self, matches, competition):
-        """Save scraped data to database (incl. eci_score)."""
+        """Save current ECI data and append a historical snapshot for every match."""
+
         if matches.empty:
             return
 
@@ -401,19 +424,28 @@ class ECIScraper:
             if value['name'] == competition:
                 short_name = key
                 break
+
         competition_name = short_name if short_name else competition
 
         with psycopg2.connect(**DB_CONFIG) as conn:
             for _, match in matches.iterrows():
                 try:
                     with conn.cursor() as cursor:
-                        match_id = f"{match['date']}_{match['home_team']}_{match['away_team']}"
+
+                        match_id = (
+                            f"{match['date']}_"
+                            f"{match['home_team']}_"
+                            f"{match['away_team']}"
+                        )
 
                         odds_home = self.clean_percentage(match['home_win_pct'])
                         odds_draw = self.clean_percentage(match['draw_pct'])
                         odds_away = self.clean_percentage(match['away_win_pct'])
                         score_norm = normalize_score(match.get('score'))
 
+                        # --------------------------------------------------
+                        # 1. CURRENT STATE
+                        # --------------------------------------------------
                         cursor.execute("""
                             INSERT INTO public.eci_data (
                                 match_id, date, home_team, away_team,
@@ -433,18 +465,72 @@ class ECIScraper:
                                 home_rating  = EXCLUDED.home_rating,
                                 away_rating  = EXCLUDED.away_rating,
                                 competition  = EXCLUDED.competition,
-                                -- behoud bestaande score als de nieuwe None is
-                                eci_score    = COALESCE(EXCLUDED.eci_score, eci_data.eci_score),
+                                eci_score    = COALESCE(
+                                    EXCLUDED.eci_score,
+                                    eci_data.eci_score
+                                ),
                                 updated_at   = CURRENT_TIMESTAMP
                         """, (
-                            match_id, match['date'], match['home_team'], match['away_team'],
-                            odds_home, odds_draw, odds_away,
-                            match['home_rating'], match['away_rating'], competition_name,
-                            score_norm, self.current_timestamp, 'dekraan'
+                            match_id,
+                            match['date'],
+                            match['home_team'],
+                            match['away_team'],
+                            odds_home,
+                            odds_draw,
+                            odds_away,
+                            match['home_rating'],
+                            match['away_rating'],
+                            competition_name,
+                            score_norm,
+                            self.current_timestamp,
+                            'dekraan'
                         ))
+
+                        # --------------------------------------------------
+                        # 2. HISTORICAL SNAPSHOT
+                        # --------------------------------------------------
+                        cursor.execute("""
+                            INSERT INTO public.eci_data_snapshots (
+                                snapshot_at,
+                                match_id,
+                                date,
+                                home_team,
+                                away_team,
+                                home_win_pct,
+                                draw_pct,
+                                away_win_pct,
+                                home_rating,
+                                away_rating,
+                                competition,
+                                eci_score,
+                                created_by
+                            ) VALUES (
+                                %s, %s, %s, %s, %s,
+                                %s, %s, %s,
+                                %s, %s, %s, %s, %s
+                            )
+                        """, (
+                            self.current_timestamp,
+                            match_id,
+                            match['date'],
+                            match['home_team'],
+                            match['away_team'],
+                            odds_home,
+                            odds_draw,
+                            odds_away,
+                            match['home_rating'],
+                            match['away_rating'],
+                            competition_name,
+                            score_norm,
+                            'dekraan'
+                        ))
+
                     conn.commit()
+
                 except Exception as e:
-                    logger.exception(f"Error saving match {match_id}: {str(e)}")
+                    logger.exception(
+                        f"Error saving match {match_id}: {str(e)}"
+                    )
                     conn.rollback()
                     continue
 
