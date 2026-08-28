@@ -33,7 +33,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-DEFAULT_TIER_PATH = Path("output") / "calibration" / "tier_definition.json"
+# Absoluut pad, gebaseerd op de locatie van dit bestand. Met een relatief
+# pad vond run_model het bestand niet wanneer hij vanuit een andere map werd
+# gestart (bijv. Task Scheduler) en viel hij STIL terug op de oude tiers.
+from config import OUTPUT_DIR
+
+DEFAULT_TIER_PATH = OUTPUT_DIR / "calibration" / "tier_definition.json"
 
 _CACHE: dict | None = None
 
@@ -155,12 +160,17 @@ def classify_row(row: pd.Series, tier_def: dict) -> dict:
     if eci_prob is not None and eci_prob > 1.2:
         eci_prob /= 100.0
 
-    # Marktkans uit alle drie de odds (ge-devigd), puur ter informatie.
+    # Marktkans uit alle drie de odds, ge-devigd volgens Shin (dezelfde
+    # methode als de rest van het systeem; proportioneel onderschatte de
+    # favoriet systematisch).
     o = [f("odds_home", "Odds Home"), f("odds_draw", "Odds Draw"), f("odds_away", "Odds Away")]
     market_prob = None
     if all(x is not None and x > 1.01 for x in o) and odds:
-        tot = sum(1.0 / x for x in o)
-        market_prob = (1.0 / odds) / tot
+        from prob_calibration import devig_shin
+
+        p_shin, _ = devig_shin(np.array([o], dtype=float))
+        idx = {"HOME": 0, "DRAW": 1, "AWAY": 2}.get(selection)
+        market_prob = float(p_shin[0, idx]) if idx is not None else None
 
     # Ziet ECI dezelfde uitkomst als favoriet als de markt?
     eci_all = [
@@ -206,7 +216,11 @@ def assign_tiers(picks: pd.DataFrame, path: str | Path | None = None) -> pd.Data
         return picks
     tier_def = load_tier_definition(path)
     if tier_def is None:
-        print("[tier] geen tier_definition.json gevonden; oude tiers blijven staan.")
+        print(
+            f"[tier] WAARSCHUWING: {Path(path or DEFAULT_TIER_PATH)} niet gevonden.\n"
+            "[tier] De OUDE tiers blijven staan. Draai tier_rebuild.py om de\n"
+            "[tier] definitie aan te maken, of controleer het pad."
+        )
         return picks
 
     out = picks.copy()
@@ -215,3 +229,23 @@ def assign_tiers(picks: pd.DataFrame, path: str | Path | None = None) -> pd.Data
                 "classification_reason"):
         out[key] = [r[key] for r in res]
     return out
+
+# Volgorde van best naar slechtst. Bevat OOK de oude namen (A-, X), zodat
+# picks uit een eerdere versie nog netjes gesorteerd worden.
+TIER_ORDER = {"A+": 0, "A": 1, "A-": 2, "B": 3, "C": 4, "D": 5, "X": 6}
+
+
+def sort_by_tier(picks: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sorteer picks op de HUIDIGE tier, daarna op geschatte EV.
+
+    Moet ná assign_tiers draaien: classify_picks sorteert op de oude tier en
+    die kolom wordt daarna overschreven.
+    """
+    if picks is None or picks.empty or "pick_tier" not in picks.columns:
+        return picks
+    out = picks.copy()
+    out["_tier_order"] = out["pick_tier"].map(TIER_ORDER).fillna(9)
+    out["_ev"] = pd.to_numeric(out.get("estimated_ev"), errors="coerce").fillna(-1.0)
+    out = out.sort_values(["_tier_order", "_ev"], ascending=[True, False])
+    return out.drop(columns=["_tier_order", "_ev"])

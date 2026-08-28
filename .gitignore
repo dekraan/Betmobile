@@ -33,3 +33,47 @@ _archive/
 .wdm/
 chromedriver*
 *.log
+
+# --- Secrets (nooit committen) ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+
+# --- Logs & runtime output ---
+logs/
+output/
+eci_engine/output/*.xlsx
+eci_engine/output/**/*.xlsx
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# --- Oud archief (bevat oude code + secrets, niet nodig op GitHub) ---
+_archive/
+
+# --- Selenium / Chrome driver cache ---
+.wdm/
+chromedriver*
+*.log
+
+# --- Bevroren modeldefinities WEL meenemen ---
+# Deze bestanden bepalen welke tier/calibratie een pick kreeg. Zonder hen is
+# tier_version / calibration_version in de database niet meer te herleiden.
+!eci_engine/output/calibration/tier_definition.json
+!eci_engine/output/calibration/calibration_weights.json
+!eci_engine/output/research/strong_segments.json
+!eci_engine/output/research/danger_segments.json

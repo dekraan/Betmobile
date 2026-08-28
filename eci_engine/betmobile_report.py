@@ -49,6 +49,7 @@ from fit_calibration import (
     print_header,
     print_table,
 )
+from shared_buckets import ODDS_BINS_REPORT, ODDS_LABELS_REPORT
 from eci_quality import calibration_table, to_long, build_team_history, rating_lag_analysis, wilson_ci
 
 EXPORT_DIR = OUTPUT_DIR / "research"
@@ -118,8 +119,21 @@ def roi_row(label: str, profit: np.ndarray, extra: dict | None = None) -> dict:
 
 
 def devig(odds: pd.DataFrame) -> pd.DataFrame:
-    imp = 1.0 / odds
-    return imp.div(imp.sum(axis=1), axis=0)
+    """
+    Ge-devigde kansen volgens Shin - dezelfde methode als de rest van het
+    systeem. Eerder stond hier een eigen proportionele berekening, waardoor
+    sectie 3b en 4 met een andere methode rekenden dan sectie 3b-1 en de
+    CLV-cijfers structureel te negatief uitvielen.
+    """
+    from prob_calibration import devig_shin
+
+    arr = odds.apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+    ok = np.isfinite(arr).all(axis=1) & (arr > 1.01).all(axis=1)
+    out = np.full(arr.shape, np.nan)
+    if ok.any():
+        p, _ = devig_shin(arr[ok])
+        out[ok] = p
+    return pd.DataFrame(out, index=odds.index, columns=odds.columns)
 
 
 # =====================================================================
@@ -521,8 +535,7 @@ def section_picks(picks: pd.DataFrame) -> dict:
 
     picks = picks.copy()
     picks["odds_bucket"] = pd.cut(
-        picks["odds_taken"], bins=[1.0, 1.6, 1.8, 2.0, 2.2, 2.5, np.inf],
-        labels=["1.0-1.6", "1.6-1.8", "1.8-2.0", "2.0-2.2", "2.2-2.5", "2.5+"])
+        picks["odds_taken"], bins=ODDS_BINS_REPORT, labels=ODDS_LABELS_REPORT)
     print_table("4d. PER ODDS BUCKET", summarize_picks(picks, "odds_bucket", "odds"))
 
     return {"total": total}

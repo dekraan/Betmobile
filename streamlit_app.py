@@ -628,7 +628,7 @@ def render_week_overview(df: pd.DataFrame) -> None:
             )
         with c2:
             tier = r.get("pick_tier", "")
-            tier_kind = "good" if tier in ("A+", "A") else "warn" if tier in ("A-", "B") else "neutral"
+            tier_kind = "good" if tier in ("A+", "A") else "warn" if tier in ("A-", "B", "C") else "neutral"
             st.markdown(
                 chip(f'{tier}', tier_kind) + " " + chip(r["selection"], "good" if is_win else "bad"),
                 unsafe_allow_html=True,
@@ -845,7 +845,12 @@ def render_pick_cards(df: pd.DataFrame, empty_text: str) -> None:
     if comp_filter and "competition" in work.columns:
         work = work[work["competition"].isin(comp_filter)]
     if only_safe:
-        work = work[(work.get("pick_tier") != "X") & (work.get("danger_tags").fillna("").astype(str).str.len() == 0)]
+        # X kwam uit de oude classificatie en wordt niet meer toegekend;
+        # D is de laagste tier in de nieuwe EV-definitie.
+        work = work[
+            (~work.get("pick_tier").isin(["X", "D"]))
+            & (work.get("danger_tags").fillna("").astype(str).str.len() == 0)
+        ]
 
     if work.empty:
         st.info("Geen picks binnen deze filters.")
@@ -1336,15 +1341,35 @@ def annotate_all_matches(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
     for c in ["odds_home", "odds_draw", "odds_away", "home_rating", "away_rating"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Marktkans (ge-devigd) naast de ECI-kans: het verschil is het hele verhaal.
+    # Marktkans naast de ECI-kans: het verschil is het hele verhaal.
+    # Ge-devigd volgens Shin, net als de rest van het systeem - de
+    # proportionele methode onderschat favorieten systematisch.
     imp = pd.DataFrame({
         "h": 1 / df["odds_home"], "d": 1 / df["odds_draw"], "a": 1 / df["odds_away"],
     })
     tot = imp.sum(axis=1)
-    df["mkt_home"] = imp["h"] / tot
-    df["mkt_draw"] = imp["d"] / tot
-    df["mkt_away"] = imp["a"] / tot
     df["marge"] = tot - 1
+
+    try:
+        import sys as _sys
+        from pathlib import Path as _P
+        _eng = str(_P(__file__).resolve().parent / "eci_engine")
+        if _eng not in _sys.path:
+            _sys.path.insert(0, _eng)
+        from prob_calibration import devig_shin
+
+        arr = df[["odds_home", "odds_draw", "odds_away"]].to_numpy(dtype=float)
+        ok = np.isfinite(arr).all(axis=1) & (arr > 1.01).all(axis=1)
+        probs = np.full(arr.shape, np.nan)
+        if ok.any():
+            p, _z = devig_shin(arr[ok])
+            probs[ok] = p
+        df["mkt_home"], df["mkt_draw"], df["mkt_away"] = probs[:, 0], probs[:, 1], probs[:, 2]
+    except Exception:  # noqa: BLE001
+        # Valt terug op proportioneel als de engine-module niet bereikbaar is.
+        df["mkt_home"] = imp["h"] / tot
+        df["mkt_draw"] = imp["d"] / tot
+        df["mkt_away"] = imp["a"] / tot
 
     # ECI-favoriet en de bijbehorende cijfers
     eci = df[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float)

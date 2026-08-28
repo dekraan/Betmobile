@@ -581,6 +581,14 @@ def classify_picks(picks: pd.DataFrame) -> pd.DataFrame:
     out = picks.copy()
 
     SEGMENT_DIR.mkdir(parents=True, exist_ok=True)
+    # LET OP - BEVROREN ERFENIS.
+    # Deze segmenten komen uit de auto-discovery (build_segment_library), die
+    # honderden combinaties afzocht op dezelfde data waarop ze daarna
+    # beoordeeld werden. Ze bepalen de TIER niet meer (dat doet tier_assign op
+    # basis van gemeten rendement per prijsklasse), maar ze voeden nog wel de
+    # sector_tags en danger_tags in de uitleg.
+    # Niet opnieuw genereren: de discovery is als methode afgeschreven. Wel
+    # bewaren, zodat oude picks reproduceerbaar blijven.
     strong_segments = load_segment_config(STRONG_SEGMENTS_PATH)
     danger_segments = load_segment_config(DANGER_SEGMENTS_PATH)
 
@@ -595,7 +603,10 @@ def classify_picks(picks: pd.DataFrame) -> pd.DataFrame:
     for col in class_df.columns:
         out[col] = class_df[col]
 
-    # Sorteer voor output: A+ bovenaan, dan A, B, C, X.
+    # Sorteer voor output op de HIER toegekende tier.
+    # LET OP: run_model roept hierna assign_tiers aan, die pick_tier
+    # overschrijft met de EV-gebaseerde tier en opnieuw sorteert met
+    # tier_assign.sort_by_tier. Deze sortering is dus voorlopig.
     tier_order = {"A+": 0, "A": 1, "A-": 2, "B": 3, "C": 4, "X": 5}
     out["_tier_order"] = out["pick_tier"].map(tier_order).fillna(9)
     sort_strength = pd.to_numeric(out.get("SortStrength"), errors="coerce").fillna(0)

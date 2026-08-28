@@ -63,9 +63,7 @@ TIER_DIR.mkdir(parents=True, exist_ok=True)
 TIER_CONFIG_PATH = TIER_DIR / "tier_definition.json"
 
 # Prijsklassen waarop het rendement gemeten wordt (op de odds zelf).
-ODDS_BINS = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.5, 3.0, 4.0, 6.0, np.inf]
-ODDS_LABELS = ["<1.2", "1.2-1.4", "1.4-1.6", "1.6-1.8", "1.8-2.0",
-               "2.0-2.5", "2.5-3.0", "3.0-4.0", "4.0-6.0", "6.0+"]
+from shared_buckets import ODDS_BINS_FINE as ODDS_BINS, ODDS_LABELS_FINE as ODDS_LABELS
 
 # Krimp naar het algemene gemiddelde: een prijsklasse met weinig
 # waarnemingen krijgt niet zijn volle (toevallige) rendement toebedeeld.

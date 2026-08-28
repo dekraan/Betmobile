@@ -38,6 +38,7 @@ from config import OUTPUT_DIR
 from db import db_engine, relation_exists
 
 from prob_calibration import assign_competition_class, compute_market_probs
+from shared_buckets import ODDS_BINS_REPORT, ODDS_LABELS_REPORT
 from fit_calibration import CLASS_PATTERNS, DEFAULT_CLASS, _patterns_calib_stub
 
 EXPORT_DIR = OUTPUT_DIR / "research"
@@ -313,8 +314,7 @@ def build_clv_frame(
     )
     df["odds_bucket"] = pd.cut(
         pd.to_numeric(df["odds_taken_sel"], errors="coerce"),
-        bins=[1.0, 1.6, 1.8, 2.0, 2.2, 2.5, np.inf],
-        labels=["1.0-1.6", "1.6-1.8", "1.8-2.0", "2.0-2.2", "2.2-2.5", "2.5+"],
+        bins=ODDS_BINS_REPORT, labels=ODDS_LABELS_REPORT,
     )
     if "date_ts" in df.columns:
         df["month"] = pd.to_datetime(df["date_ts"], errors="coerce").dt.strftime("%Y-%m")

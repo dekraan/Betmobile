@@ -7,7 +7,7 @@ from rules import apply_rules, apply_drift
 from calibration import build_calibration, apply_calibration
 from picks import build_picks
 from classification import classify_picks
-from tier_assign import assign_tiers
+from tier_assign import assign_tiers, sort_by_tier
 from reporting import analyze_failures
 from exporters import save_to_db, save_excel, save_single_fails_to_db
 from utils import choose_relevant_side
@@ -68,6 +68,10 @@ def main():
     picks = build_picks(df)
     picks = classify_picks(picks)
     picks = assign_tiers(picks)   # nieuwe tiers op basis van geschatte EV
+    # classify_picks sorteerde op de OUDE tier; assign_tiers overschrijft die
+    # kolom daarna. Zonder deze hersortering staan de picks in de volgorde van
+    # een tier die niet meer getoond wordt.
+    picks = sort_by_tier(picks)
     # 5b) WATCHLIST: alleen snap faalt (dus inhoudelijk OK, maar nog niet genoeg gescraped)
     snap_watch = df[
         (
