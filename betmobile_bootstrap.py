@@ -284,6 +284,7 @@ def ensure_schema():
     );
     CREATE INDEX IF NOT EXISTS idx_snapshots_fx ON odds_values_snapshots (fixture_id, market_key, label, captured_at DESC);
     CREATE INDEX IF NOT EXISTS idx_snapshots_captured ON odds_values_snapshots (captured_at);
+    ALTER TABLE odds_values_snapshots ADD COLUMN IF NOT EXISTS last_update TIMESTAMPTZ;
 
     -- seed markten (idempotent)
     INSERT INTO odds_markets(market_key,name) VALUES
@@ -961,7 +962,34 @@ def _norm_label(x):
 
 # ========= Odds scope =========
 
-ALLOWED_BOOKMAKERS = {8, 4}   # 8=Bet365, 4=Pinnacle
+# Volledige marktdekking (1x2 + AH + OU2.5). Dit zijn de boeken waar
+# het model op draait en die als referentie dienen.
+CORE_BOOKMAKERS = {
+    8,   # Bet365   - waar we daadwerkelijk inzetten
+    4,   # Pinnacle - sharp referentie, CLV-benchmark
+}
+
+# NL-vergund: hier kun je echt inzetten, dus deze tellen mee in de
+# best-price vergelijking. Alleen 1x2, om rijgroei te beperken.
+NL_BOOKMAKERS = {
+    16,  # Unibet
+    26,  # Betsson
+    32,  # Betano
+}
+
+# Puur meetinstrument: marktconsensus voor Shin/CLV. Niet speelbaar.
+# Alleen 1x2.
+CONSENSUS_BOOKMAKERS = {
+    6,   # Bwin
+    7,   # William Hill
+    3,   # Betfair
+    2,   # Marathonbet
+    11,  # 1xBet
+    24,  # Betway
+}
+
+ONE_X_TWO_ONLY = NL_BOOKMAKERS | CONSENSUS_BOOKMAKERS
+ALLOWED_BOOKMAKERS = CORE_BOOKMAKERS | ONE_X_TWO_ONLY
 
 BET_ID_1X2 = 1                # Match Winner
 BET_ID_AH = 4                 # Asian Handicap
@@ -1509,7 +1537,7 @@ def _persist_odds_bulk(rows_to_upsert):
         return
 
     # Voor snapshots gebruiken we dezelfde deduped set
-    snapshot_rows = [(r[0], r[1], r[2], r[3], r[4]) for r in deduped]
+    snapshot_rows = [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in deduped]
 
     with get_conn() as conn, conn.cursor() as cur:
         # Upsert naar odds_values
@@ -1526,12 +1554,13 @@ def _persist_odds_bulk(rows_to_upsert):
         # Append snapshots (captured_at = NOW())
         # NB: omdat NOW() binnen 1 statement gelijk is, moet dit óók deduped zijn.
         sql_sn = """
-        INSERT INTO odds_values_snapshots (fixture_id, bookmaker_id, market_key, label, odd)
+        INSERT INTO odds_values_snapshots
+            (fixture_id, bookmaker_id, market_key, label, odd, last_update)
         VALUES %s
         """
         for i in range(0, len(snapshot_rows), 5000):
             pgx.execute_values(cur, sql_sn, snapshot_rows[i:i+5000],
-                               template="(%s,%s,%s,%s,%s)", page_size=1000)
+                               template="(%s,%s,%s,%s,%s,%s)", page_size=1000)
 
         conn.commit()
 
@@ -1590,12 +1619,15 @@ def load_odds_for_fixtures(fixture_ids, max_cache_ttl=300):
             for bm in bookmakers:
                 bmid, bmname = bm.get("id"), bm.get("name")
 
-                # Alleen Bet365 en Pinnacle
                 if bmid not in ALLOWED_BOOKMAKERS:
                     continue
 
                 if bmid and bmname:
                     bm_rows[bmid] = bmname
+
+                # Extra boeken alleen 1x2: AH heeft veel handicaplijnen
+                # en zou de snapshottabel onnodig laten groeien.
+                only_1x2 = bmid in ONE_X_TWO_ONLY
 
                 # BUF per bookmaker+fixture
                 buf.clear()
@@ -1608,6 +1640,9 @@ def load_odds_for_fixtures(fixture_ids, max_cache_ttl=300):
 
                     if _is_1x2_market(bet):
                         _extract_1x2_values(fx, bmid, bet, last_upd, buf)
+                        continue
+                        
+                    if only_1x2:
                         continue
 
                     if _is_ah_market(bet):

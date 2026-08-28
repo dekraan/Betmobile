@@ -178,7 +178,9 @@ def section_data_state() -> pd.DataFrame:
             GROUP BY bookmaker_id, market_key
             ORDER BY bookmaker_id, market_key
         """)
-        names = {BET365_ID: "Bet365", PINNACLE_ID: "Pinnacle"}
+        names = {8: "Bet365", 4: "Pinnacle", 2: "Marathonbet", 3: "Betfair",
+                 6: "Bwin", 7: "William Hill", 11: "1xBet", 16: "Unibet",
+                 24: "Betway", 26: "Betsson", 32: "Betano"}
         for _, r in s.iterrows():
             rows.append({
                 "bron": f"snapshots {names.get(int(r['bookmaker_id']), r['bookmaker_id'])} / {r['market_key']}",
