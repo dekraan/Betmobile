@@ -63,6 +63,7 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from config import OUTPUT_DIR
 from db import db_engine
@@ -130,19 +131,27 @@ def regressie(df: pd.DataFrame, termen: list[str], cluster_col: str = "competiti
     tss = ((y - y.mean()) ** 2).sum()
     r2 = 1.0 - (resid @ resid) / tss if tss > 0 else np.nan
 
+    df_clus = max(n_groepen - 1, 1)
+    crit = float(stats.t.ppf(0.975, df_clus))
+    t_clus = beta / se_g
+    p_clus = 2.0 * stats.t.sf(np.abs(t_clus), df_clus)
+
     out = pd.DataFrame({
         "term": namen,
         "coef": beta,
         "se_klas": se_c,
         "se_hc3": se_h,
         "se_clus": se_g,
-        "clus_laag": beta - 1.96 * se_g,
-        "clus_hoog": beta + 1.96 * se_g,
-        "sig_clus": np.abs(beta) > 1.96 * se_g,
+        "t_clus": t_clus,
+        "p_clus": p_clus,
+        "clus_laag": beta - crit * se_g,
+        "clus_hoog": beta + crit * se_g,
+        "sig_clus": np.abs(t_clus) > crit,
     })
     out.attrs["r2"] = r2
     out.attrs["n"] = len(df)
     out.attrs["clusters"] = n_groepen
+    out.attrs["crit"] = crit
     return out
 
 
@@ -323,9 +332,10 @@ def uitval(volledig: pd.DataFrame, behouden: pd.DataFrame, reden: str) -> None:
 # =====================================================================
 
 def toon(titel: str, res: pd.DataFrame) -> None:
+    g = res.attrs["clusters"]
     print(f"\n=== {titel} ===")
-    print(f"n = {res.attrs['n']}, clusters = {res.attrs['clusters']}, "
-          f"R2 = {res.attrs['r2']:.4f}")
+    print(f"n = {res.attrs['n']}, clusters = {g}, R2 = {res.attrs['r2']:.4f}, "
+          f"kritiek t({g-1}) = {res.attrs['crit']:.4f}")
     print(res.round(5).to_string(index=False))
 
 
