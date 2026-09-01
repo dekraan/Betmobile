@@ -1,0 +1,18 @@
+{
+    "min_prob": 0.28,
+    "min_value": 1.04,
+    "min_rating_gap": 0,
+    "min_odds": 1.6,
+    "max_odds": 4.0,
+    "min_snapshots": 4,
+    "min_drift_abs": 0.0,
+    "min_strength": 1.5,
+    "metrics": {
+        "bets": 301,
+        "profit": -16.79,
+        "roi": -0.05578073089700997,
+        "min_slice_roi": -0.0981578947368421,
+        "score": -0.10485967826543102,
+        "hitrate": 0.4485049833887043
+    }
+}

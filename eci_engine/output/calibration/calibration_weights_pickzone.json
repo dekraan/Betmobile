@@ -1,0 +1,178 @@
+{
+  "version": "2026-08-18_170206",
+  "scope": "pick_zone",
+  "fitted_at": "2026-08-18T17:02:06",
+  "source": "public.eci_oddspedia_matches",
+  "data_window": {
+    "start": "2025-02-16",
+    "end": "2026-05-25"
+  },
+  "split_date": "2026-01-22",
+  "train_frac": 0.65,
+  "min_class_matches": 400,
+  "default_class": "standard",
+  "class_patterns": [
+    [
+      "summer_league",
+      [
+        "^norway$|norwegian|eliteserien|obos",
+        "^sweden$|swedish|allsvenskan|superettan",
+        "^finland$|finnish|veikkausliiga|ykk",
+        "^iceland$|icelandic|besta deild|urvalsdeild",
+        "^ireland$|league of ireland",
+        "faroe",
+        "^estonia$|meistriliiga",
+        "^latvia$|virsl",
+        "^lithuania$|a lyga"
+      ]
+    ],
+    [
+      "european_cups",
+      [
+        "champions league",
+        "europa league",
+        "conference league"
+      ]
+    ],
+    [
+      "top",
+      [
+        "^england$|premier league",
+        "^spain$|la ?liga",
+        "^italy$|\\bserie a\\b",
+        "^germany$|\\bbundesliga\\b",
+        "^france$|ligue 1"
+      ]
+    ]
+  ],
+  "competition_class_map": {
+    "Conference League": "european_cups",
+    "Europa League": "european_cups",
+    "Champions League": "european_cups",
+    "Belgium": "standard",
+    "Netherlands": "standard",
+    "Poland": "standard",
+    "Austria": "standard",
+    "Czech Republic": "standard",
+    "Denmark": "standard",
+    "Romania": "standard",
+    "Portugal": "standard",
+    "Bulgaria": "standard",
+    "Scotland": "standard",
+    "Bosnia": "standard",
+    "Hungary": "standard",
+    "Israel": "standard",
+    "Slovakia": "standard",
+    "Croatia": "standard",
+    "Greece": "standard",
+    "Cyprus": "standard",
+    "Serbia": "standard",
+    "Switzerland": "standard",
+    "Ukraine": "standard",
+    "Slovenia": "standard",
+    "Georgia": "standard",
+    "Northern Ireland": "standard",
+    "Kazakhstan": "standard",
+    "Azerbaijan": "standard",
+    "Armenia": "standard",
+    "Malta": "standard",
+    "Sweden": "summer_league",
+    "Norway": "summer_league",
+    "Finland": "summer_league",
+    "Iceland": "summer_league",
+    "Ireland": "summer_league",
+    "Estonia": "summer_league",
+    "Faroe Islands": "summer_league",
+    "Latvia": "summer_league",
+    "Lithuania": "summer_league",
+    "England": "top",
+    "Italy": "top",
+    "Spain": "top",
+    "France": "top",
+    "Germany": "top"
+  },
+  "global": {
+    "w": 0.0,
+    "n_matches": 1555,
+    "n_train": 1011,
+    "n_test": 544,
+    "fallback_to_global": false,
+    "w_best_test": 0.0,
+    "logloss_test": {
+      "model": 1.0413626489904368,
+      "market": 1.0125263381788476,
+      "calibrated": 1.0125263381788476
+    },
+    "brier_test": {
+      "model": 0.6253583299675727,
+      "market": 0.6057665078478286,
+      "calibrated": 0.6057665078478285
+    }
+  },
+  "classes": {
+    "european_cups": {
+      "w": 0.0,
+      "n_matches": 201,
+      "n_train": 154,
+      "n_test": 47,
+      "fallback_to_global": true,
+      "w_best_test": 0.25,
+      "logloss_test": {
+        "model": 0.9940271189515542,
+        "market": 0.9862892521254223,
+        "calibrated": 0.9862892521254223
+      },
+      "brier_test": {
+        "model": 0.5896700989558209,
+        "market": 0.5847609362093741,
+        "calibrated": 0.5847609362093741
+      }
+    },
+    "standard": {
+      "w": 0.0,
+      "n_matches": 700,
+      "n_train": 435,
+      "n_test": 265,
+      "fallback_to_global": false,
+      "w_best_test": 0.0,
+      "logloss_test": {
+        "model": 1.0476342878856248,
+        "market": 1.0202620640847846,
+        "calibrated": 1.0202620640847846
+      },
+      "brier_test": {
+        "model": 0.6333107457550131,
+        "market": 0.6111166910313933,
+        "calibrated": 0.6111166910313933
+      }
+    },
+    "summer_league": {
+      "w": 0.0,
+      "n_matches": 146,
+      "n_train": 146,
+      "n_test": 0,
+      "fallback_to_global": true,
+      "w_best_test": null,
+      "logloss_test": null,
+      "brier_test": null
+    },
+    "top": {
+      "w": 0.0,
+      "n_matches": 508,
+      "n_train": 276,
+      "n_test": 232,
+      "fallback_to_global": true,
+      "w_best_test": 0.0,
+      "logloss_test": {
+        "model": 1.0437884490102756,
+        "market": 1.0090055436936647,
+        "calibrated": 1.0090055436936647
+      },
+      "brier_test": {
+        "model": 0.6235046949411958,
+        "market": 0.6039107463105989,
+        "calibrated": 0.6039107463105989
+      }
+    }
+  }
+}
