@@ -3,6 +3,16 @@
 .env.*
 !.env.example
 
+eci_snapshots/
+eci_history/
+eci_history_probe/
+eci_probe_output/
+eci_pages_archive/
+eci_team_history_probe/
+eci_api_discovery/
+logs/
+*.jsonl
+
 # --- Python ---
 __pycache__/
 *.py[cod]
