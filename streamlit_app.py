@@ -1326,6 +1326,186 @@ SQL_PICKS_FOR_DAY = """
 """
 
 
+# ---------------------------------------------------------------------
+# REGELCHECKS VOOR ELKE WEDSTRIJD
+#
+# Spiegelt eci_engine/rules.py, maar dan client-side. picks_evaluated
+# bevat alleen picks, dus voor een wedstrijd die geen pick werd bestaat
+# er nergens een faalreden. Die berekenen we hier opnieuw uit dezelfde
+# kolommen en dezelfde drempels uit config.py.
+#
+# LET OP: dit leest alleen. Er wordt niets aan de engine of de database
+# veranderd, dus de freeze van 18-08-2026 blijft intact.
+# ---------------------------------------------------------------------
+
+FAIL_LABELS = {
+    "value":  "value te laag",
+    "prob":   "kans te laag",
+    "odds":   "odds buiten bereik",
+    "rating": "rating gap te klein",
+    "snap":   "te weinig snapshots",
+    "drift_size":    "drift te klein",
+    "drift_against": "markt beweegt tegen",
+    "edge":   "geen rating-voordeel thuis",
+}
+
+# Volgorde waarin faalredenen worden getoond: eerst wat je zelf kunt wegen.
+FAIL_ORDER = ["value", "prob", "odds", "rating", "snap",
+              "drift_size", "drift_against", "edge"]
+
+
+def add_rule_checks(df: pd.DataFrame) -> pd.DataFrame:
+    """Herbereken per zijde alle booleans uit rules.py."""
+    if df.empty:
+        return df
+
+    p = ECI_RULE_PARAMS
+    min_prob  = float(p.get("min_prob", 0.52))
+    min_value = float(p.get("min_value", 1.04))
+    min_gap   = float(p.get("min_rating_gap", 0))
+    min_odds  = float(p.get("min_odds", 1.40))
+    max_odds  = float(p.get("max_odds", 4.00))
+    min_snap  = float(p.get("min_snapshots", 7))
+    min_drift = float(p.get("min_drift_abs", 0))
+
+    out = df.copy()
+    out["value_home"] = out["odds_home"] * out["home_win_pct"]
+    out["value_away"] = out["odds_away"] * out["away_win_pct"]
+    out["rating_home_edge"] = out["home_rating"] - out["away_rating"]
+
+    snaps = pd.to_numeric(out.get("n_snapshots"), errors="coerce").fillna(0)
+
+    spec = [
+        ("home", "home_win_pct", "value_home", "odds_home", "home_drift_pct"),
+        ("away", "away_win_pct", "value_away", "odds_away", "away_drift_pct"),
+    ]
+
+    for side, prob_col, value_col, odds_col, drift_col in spec:
+        drift = pd.to_numeric(out.get(drift_col), errors="coerce").fillna(0)
+        checks = {
+            "prob":   out[prob_col] >= min_prob,
+            "value":  out[value_col] >= min_value,
+            "rating": out["rating_gap"] >= min_gap,
+            "odds":   out[odds_col].between(min_odds, max_odds),
+            "snap":   snaps >= min_snap,
+            "drift_size":    drift.abs() >= min_drift,
+            "drift_against": drift <= DRIFT_OPPOSE_THRESHOLD,
+        }
+        if side == "home":
+            # rules.py legt deze extra eis alleen op aan HOME.
+            checks["edge"] = out["rating_home_edge"] >= 0
+
+        for naam, serie in checks.items():
+            out[f"{side}_ok_{naam}"] = serie.fillna(False).astype(bool)
+
+        cols = [f"{side}_ok_{n}" for n in checks]
+        out[f"{side}_fail_count"] = (~out[cols]).sum(axis=1)
+
+    return out
+
+
+def add_candidate_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Kies per wedstrijd de kandidaatzijde en bouw de leeskolommen.
+
+    De engine kijkt nooit naar DRAW, dus de kandidaat is altijd HOME of
+    AWAY: de zijde met de minste gefaalde checks, bij gelijkspel de
+    zijde met de hoogste value.
+    """
+    if df.empty or "home_fail_count" not in df.columns:
+        return df
+
+    out = df.copy()
+    thuis = (out["home_fail_count"] < out["away_fail_count"]) | (
+        (out["home_fail_count"] == out["away_fail_count"])
+        & (out["value_home"].fillna(0) >= out["value_away"].fillna(0))
+    )
+
+    out["kant"]        = np.where(thuis, "HOME", "AWAY")
+    out["kant_team"]   = np.where(thuis, out["home_team"], out["away_team"])
+    out["kant_odds"]   = np.where(thuis, out["odds_home"], out["odds_away"])
+    out["kant_kans"]   = np.where(thuis, out["home_win_pct"], out["away_win_pct"])
+    out["kant_value"]  = np.where(thuis, out["value_home"], out["value_away"])
+    out["kant_drift"]  = np.where(thuis, out["home_drift_pct"], out["away_drift_pct"])
+    out["fails"]       = np.where(thuis, out["home_fail_count"], out["away_fail_count"])
+
+    # Faalredenen van de kandidaatzijde, in leesbare taal.
+    delen = []
+    leeg = pd.Series(True, index=out.index)
+    for naam in FAIL_ORDER:
+        h = out.get(f"home_ok_{naam}", leeg)
+        a = out.get(f"away_ok_{naam}", leeg)
+        gefaald = ~pd.Series(np.where(thuis, h, a), index=out.index).astype(bool)
+        delen.append(pd.Series(np.where(gefaald, FAIL_LABELS[naam], ""), index=out.index))
+
+    out["waarom_niet"] = (
+        pd.concat(delen, axis=1)
+        .apply(lambda r: ", ".join([x for x in r if x]), axis=1)
+    )
+
+    # Status. Volgorde is belangrijk: een bestaande pick wint altijd.
+    out["status"] = np.select(
+        [
+            out["pick_status"].eq("ACTIEF"),
+            out["pick_status"].eq("vervallen"),
+            out["fails"] == 0,
+            out["fails"] == 1,
+        ],
+        ["✅ pick", "⏸ vervallen", "◍ regels ok", "◐ bijna"],
+        default="✗ nee",
+    )
+    return out
+
+
+def drift_woord(x: Any) -> str:
+    """Drift als richting in woorden. Negatief = markt beweegt mee."""
+    if x is None or pd.isna(x):
+        return "—"
+    try:
+        v = float(x)
+    except Exception:
+        return "—"
+    if v <= DRIFT_SUPPORT_THRESHOLD:
+        return f"↓ mee ({v * 100:+.1f}%)"
+    if v >= DRIFT_OPPOSE_THRESHOLD:
+        return f"↑ tegen ({v * 100:+.1f}%)"
+    return f"→ vlak ({v * 100:+.1f}%)"
+
+
+def render_match_detail(r: pd.Series) -> None:
+    """Volledige checklist van één wedstrijd, beide zijden naast elkaar."""
+    st.markdown(
+        f'<div class="bm-card-title">{r.get("home_team","—")} - {r.get("away_team","—")}</div>'
+        f'<div class="bm-muted">{r.get("competition","—")} · '
+        f'{to_local(r.get("kickoff_at"))} · kandidaat: {r.get("kant","—")}</div>',
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Odds", fmt_num(r.get("kant_odds"), 2))
+    c2.metric("ECI-kans", fmt_pct(r.get("kant_kans")))
+    c3.metric("Markt-kans", fmt_pct(r.get("markt_kans")))
+    c4.metric("Value", fmt_num(r.get("kant_value"), 3))
+    c5.metric("Rating gap", fmt_num(r.get("rating_gap"), 0))
+
+    for side, titel in [("home", "HOME"), ("away", "AWAY")]:
+        goed, fout = [], []
+        for naam in FAIL_ORDER:
+            kol = f"{side}_ok_{naam}"
+            if kol not in r.index:
+                continue
+            (goed if bool(r[kol]) else fout).append(FAIL_LABELS[naam])
+        st.markdown(f"**{titel}** ({len(fout)} gefaald)")
+        render_chips(fout, "bad")
+        render_chips(goed, "good")
+
+    st.caption(
+        f"Snapshots: {fmt_num(r.get('n_snapshots'), 0)} · "
+        f"drift thuis {drift_woord(r.get('home_drift_pct'))} · "
+        f"drift uit {drift_woord(r.get('away_drift_pct'))} · "
+        f"odds-leeftijd {fmt_num(r.get('market_age_hours'), 1)} uur"
+    )
+
+
 def annotate_all_matches(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
     """Voeg de afgeleide cijfers toe die de engine ook gebruikt."""
     if df.empty:
@@ -1389,6 +1569,10 @@ def annotate_all_matches(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
     df["rating_gap"] = (df["home_rating"] - df["away_rating"]).abs()
     df["eci_min_markt"] = df["eci_kans"] - mkt[rows, ei]
 
+    # Herbereken de regelchecks van de engine voor élke wedstrijd, ook
+    # voor de wedstrijden die nooit een pick werden.
+    df = add_rule_checks(df)
+
     if picks is not None and not picks.empty:
         df = df.merge(picks, on="match_id", how="left")
         df["is_pick"] = df["selection"].notna()
@@ -1406,6 +1590,7 @@ def annotate_all_matches(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
         for c in ["selection", "pick_type", "pick_tier", "rule_strength_adj", "run_id"]:
             df[c] = None
 
+    df = add_candidate_columns(df)
     return df
 
 
@@ -2187,17 +2372,24 @@ def render_all_matches() -> None:
     """
     import datetime as _dt
 
-    col1, col2, col3 = st.columns([1, 1, 1])
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
         day = st.date_input("Dag", value=_dt.date.today())
     with col2:
-        only_agree = st.checkbox("Alleen waar ECI en markt het eens zijn", value=False)
+        toon = st.radio(
+            "Toon",
+            ["Alles", "Picks", "Bijna (1 fail)", "Rest"],
+            horizontal=True,
+            help="'Bijna' = precies één gefaalde check aan de kandidaatzijde.",
+        )
     with col3:
         min_value = st.number_input(
-            "Min. value (odds x ECI-kans)", min_value=0.0, max_value=3.0,
+            "Min. value", min_value=0.0, max_value=3.0,
             value=0.0, step=0.05,
-            help="De oorspronkelijke regel: value > 1.10. Let op de waarschuwing onder de tabel.",
+            help="Value van de kandidaatzijde (odds x ECI-kans).",
         )
+
+    only_agree = st.checkbox("Alleen waar ECI en markt het eens zijn", value=False)
 
     try:
         source = query_df("""
@@ -2222,9 +2414,19 @@ def render_all_matches() -> None:
         if only_agree:
             df = df[df["eens"]]
         if min_value > 0:
-            df = df[df["value_eci_fav"] >= min_value]
+            df = df[df["kant_value"] >= min_value]
+        if toon == "Picks":
+            df = df[df["pick_status"] != "-"]
+        elif toon == "Bijna (1 fail)":
+            df = df[(df["fails"] == 1) & (df["pick_status"] == "-")]
+        elif toon == "Rest":
+            df = df[(df["fails"] >= 2) & (df["pick_status"] == "-")]
 
-        df["value_boven_1_10"] = df["value_eci_fav"] >= 1.10
+        if df.empty:
+            st.info("Geen wedstrijden binnen deze filters.")
+            return
+
+        df["value_boven_1_10"] = df["kant_value"] >= 1.10
         n_actief = int((df["pick_status"] == "ACTIEF").sum())
         n_vervallen = int((df["pick_status"] == "vervallen").sum())
         c1, c2, c3, c4 = st.columns(4)
@@ -2244,19 +2446,50 @@ def render_all_matches() -> None:
             "is dan de markt — historisch had ECI in die gevallen juist vaker ongelijk."
         )
 
-        cols = [
-            "kickoff_at", "competition", "home_team", "away_team",
-            "eci_favoriet", "eci_kans", "markt_favoriet", "markt_kans",
-            "eci_min_markt", "odds_eci_fav", "value_eci_fav", "value_boven_1_10",
-            "rating_gap",
-            "home_drift_pct", "away_drift_pct", "n_snapshots",
-            "pick_status", "selection", "pick_tier", "rule_strength_adj", "run_id",
-        ]
-        cols = [c for c in cols if c in df.columns]
-        view_df = df[cols].sort_values(
-            ["pick_status", "markt_kans"], ascending=[True, False]
+        # Bijna-picks eerst: dat is de groep waar je zelf iets over wilt vinden.
+        df = df.sort_values(
+            ["fails", "kant_value"], ascending=[True, False]
+        ).reset_index(drop=True)
+
+        tabel = pd.DataFrame({
+            "Tijd":      df["kickoff_at"].map(to_local),
+            "Wedstrijd": df["home_team"].astype(str) + " - " + df["away_team"].astype(str),
+            "Comp":      df["competition"],
+            "Kant":      df["kant"],
+            "Odds":      pd.to_numeric(df["kant_odds"], errors="coerce").round(2),
+            "Value":     pd.to_numeric(df["kant_value"], errors="coerce").round(3),
+            "Drift":     df["kant_drift"].map(drift_woord),
+            "Status":    df["status"],
+            "Waarom niet": df["waarom_niet"].replace("", "—"),
+        })
+
+        st.dataframe(
+            tabel,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "Value": st.column_config.NumberColumn(
+                    "Value",
+                    format="%.3f",
+                    help=f"odds x ECI-kans. Drempel: {ECI_RULE_PARAMS.get('min_value')}",
+                ),
+                "Odds": st.column_config.NumberColumn("Odds", format="%.2f"),
+                "Waarom niet": st.column_config.TextColumn("Waarom niet", width="medium"),
+            },
         )
-        st.dataframe(view_df, width="stretch", hide_index=True)
+
+        st.caption(
+            "Kant = de zijde die de engine zou overwegen (nooit DRAW). "
+            "Status 'regels ok' betekent: alle checks gehaald, maar geen pick — "
+            f"dat is dan MIN_STRENGTH ({MIN_STRENGTH}), die hier niet wordt herrekend."
+        )
+
+        labels = (
+            tabel["Tijd"] + " · " + tabel["Wedstrijd"] + "  (" + tabel["Status"] + ")"
+        ).tolist()
+        keuze = st.selectbox("Details van één wedstrijd", ["—"] + labels, index=0)
+        if keuze != "—":
+            render_match_detail(df.iloc[labels.index(keuze)])
 
         if len(df) and df["value_boven_1_10"].any():
             hoog = df[df["value_boven_1_10"]]
@@ -2268,12 +2501,16 @@ def render_all_matches() -> None:
                 "onenigheid met de markt, niet gevonden waarde."
             )
 
-        with st.expander("Waarom werd een wedstrijd geen pick?", expanded=False):
+        with st.expander("Wat betekenen de faalredenen?", expanded=False):
+            p = ECI_RULE_PARAMS
             st.markdown(
-                "- **ECI en markt oneens** — historisch de slechtste groep (-12% ROI)\n"
-                "- **te weinig snapshots** — de driftberekening is dan onbetrouwbaar\n"
-                "- **odds buiten bereik** of **kans onder de drempel** (zie Rules-tab)\n"
-                "- **rating gap te klein** — het model ziet dan geen duidelijk verschil\n\n"
+                f"- **value te laag** — odds x ECI-kans onder {p.get('min_value')}\n"
+                f"- **kans te laag** — ECI-kans onder {p.get('min_prob')}\n"
+                f"- **odds buiten bereik** — buiten {p.get('min_odds')}–{p.get('max_odds')}\n"
+                f"- **rating gap te klein** — onder {p.get('min_rating_gap')}\n"
+                f"- **te weinig snapshots** — onder {p.get('min_snapshots')}, drift is dan onbetrouwbaar\n"
+                f"- **markt beweegt tegen** — drift boven {DRIFT_OPPOSE_THRESHOLD}\n"
+                "- **geen rating-voordeel thuis** — geldt alleen voor HOME\n\n"
                 "Let op: geen pick zijn betekent niet 'slechte wedstrijd'. Onze eigen "
                 "metingen laten zien dat de marktkans het meeste voorspelt, en dat "
                 "ECI daar hooguit iets bovenop legt."
