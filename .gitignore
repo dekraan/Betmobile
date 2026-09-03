@@ -12,6 +12,8 @@ eci_team_history_probe/
 eci_api_discovery/
 logs/
 *.jsonl
+archive/
+output_combo/
 
 # --- Python ---
 __pycache__/

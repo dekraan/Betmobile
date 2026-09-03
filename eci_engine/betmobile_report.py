@@ -101,6 +101,20 @@ def object_exists(name: str, schema: str = "public") -> bool:
     except Exception:  # noqa: BLE001
         return False
 
+def columns_of(name: str, schema: str = "public") -> set[str]:
+    """Welke kolommen heeft deze relatie echt? Werkt voor tabellen en views."""
+    try:
+        r = q("""
+            SELECT a.attname AS c
+            FROM pg_attribute a
+            JOIN pg_class cl ON cl.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = cl.relnamespace
+            WHERE n.nspname = :schema AND cl.relname = :name
+              AND a.attnum > 0 AND NOT a.attisdropped
+        """, {"schema": schema, "name": name})
+        return set(r["c"])
+    except Exception:  # noqa: BLE001
+        return set()
 
 def roi_row(label: str, profit: np.ndarray, extra: dict | None = None) -> dict:
     """ROI met n en 95%-interval - nooit los van elkaar te lezen."""
@@ -433,15 +447,35 @@ def load_picks_with_clv() -> pd.DataFrame:
     if not object_exists(src):
         src = "picks_evaluated"
 
+    # Verplicht: hierzonder heeft de sectie geen betekenis.
+    nodig = ["match_id", "competition", "date", "date_ts", "selection", "outcome",
+             "odds_home", "odds_draw", "odds_away"]
+    # Optioneel: de view kan ouder zijn dan de tabel en kolommen missen.
+    optioneel = ["pick_type", "pick_tier", "rule_strength_adj",
+                 "estimated_ev", "tier_version"]
+
+    beschikbaar = columns_of(src)
+    ontbreekt = [c for c in nodig if c not in beschikbaar]
+    if ontbreekt:
+        print(f"[warn] {src} mist verplichte kolommen {ontbreekt}; sectie 4 overgeslagen.")
+        return pd.DataFrame()
+
+    mee = [c for c in optioneel if c in beschikbaar]
+    gemist = [c for c in optioneel if c not in beschikbaar]
+    if gemist:
+        print(f"[warn] {src} mist {gemist} - waarschijnlijk is de view ouder "
+              "dan picks_evaluated. Uitsplitsingen op die velden vervallen.")
+
     picks = q(f"""
-        SELECT match_id, competition, date, date_ts, selection, outcome,
-               odds_home, odds_draw, odds_away, pick_type, pick_tier,
-               rule_strength_adj, estimated_ev, tier_version
+        SELECT {", ".join(nodig + mee)}
         FROM public.{src}
         WHERE outcome IN ('WIN','LOSS') AND selection IN ('HOME','DRAW','AWAY')
     """)
     if picks.empty:
         return picks
+
+    for c in gemist:
+        picks[c] = np.nan
 
     link = q("SELECT match_id, fixture_id FROM public.eci_fixture_link_mv").dropna()
     picks = picks.merge(link, on="match_id", how="left")

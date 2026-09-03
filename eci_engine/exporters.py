@@ -58,14 +58,32 @@ def save_to_db(picks: pd.DataFrame, calib_meta: dict | None = None):
             # pick_reason: gebruik Advice als die bestaat, anders Selection
             pick_reason = r.get("Advice") or r.get("Selection") or "ECI"
 
+            # SECONDARY picks halen de rule per definitie niet. Daardoor staan
+            # RawStrength_Home/Away en RuleStrengthAdj_Home/Away op 0 (zie
+            # rules.py). Voor die picks is de _All variant de enige zinvolle
+            # strength; dat is ook precies wat picks.py als SecondaryStrength
+            # gebruikt om ze te selecteren en te bucketeren.
+            is_secondary = str(r.get("PickType") or "").upper() == "SECONDARY"
+
             if r.get("Selection") == "HOME":
-                selected_raw_strength = r.get("RawStrength_Home", r.get("RuleStrength"))
-                selected_adj_strength = r.get("RuleStrengthAdj_Home", r.get("RuleStrengthAdj"))
+                if is_secondary:
+                    selected_raw_strength = r.get("RawStrength_Home_All")
+                    # geen drift-aanpassing berekend voor secondary: adj == raw
+                    selected_adj_strength = r.get("RawStrength_Home_All")
+                else:
+                    selected_raw_strength = r.get("RawStrength_Home", r.get("RuleStrength"))
+                    selected_adj_strength = r.get("RuleStrengthAdj_Home", r.get("RuleStrengthAdj"))
                 selected_reason = r.get("Home_reason", r.get("Rule_reason"))
+
             elif r.get("Selection") == "AWAY":
-                selected_raw_strength = r.get("RawStrength_Away", r.get("RuleStrength"))
-                selected_adj_strength = r.get("RuleStrengthAdj_Away", r.get("RuleStrengthAdj"))
+                if is_secondary:
+                    selected_raw_strength = r.get("RawStrength_Away_All")
+                    selected_adj_strength = r.get("RawStrength_Away_All")
+                else:
+                    selected_raw_strength = r.get("RawStrength_Away", r.get("RuleStrength"))
+                    selected_adj_strength = r.get("RuleStrengthAdj_Away", r.get("RuleStrengthAdj"))
                 selected_reason = r.get("Away_reason", r.get("Rule_reason"))
+
             else:
                 selected_raw_strength = r.get("RuleStrength")
                 selected_adj_strength = r.get("RuleStrengthAdj")

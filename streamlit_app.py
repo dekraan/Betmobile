@@ -513,12 +513,16 @@ def render_pick_summary(row: pd.Series) -> None:
     # Value
     if value is not None and not pd.isna(value):
         v = round(float(value), 3)
+        min_value = float(ECI_RULE_PARAMS.get("min_value", 1.02))
         if v >= 1.20:
             parts.append(f"Value is **{v}** — the model sees meaningful edge over the bookmaker.")
         elif v >= 1.10:
             parts.append(f"Value is **{v}** — a decent edge over the implied probability.")
+        elif v >= min_value:
+            parts.append(f"Value is **{v}** — just above the {min_value} threshold.")
         else:
-            parts.append(f"Value is **{v}** — just above the threshold.")
+            parts.append(f"Value is **{v}** — below the {min_value} threshold; "
+                         "this pick is carried by rating gap and probability, not by price.")
 
     # Markt
     if market == "SUPPORT":

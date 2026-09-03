@@ -45,6 +45,27 @@ def save_near_misses_to_db(
 
     df = near_miss[existing].copy()
 
+    # RuleStrengthCalibrated is de match-brede max over beide zijden en staat
+    # bij een near miss ALTIJD op 0: apply_drift rekent alleen een adj uit als
+    # AwayRule of HomeRule waar is, en dat is bij een near miss nooit zo.
+    # Neem daarom de _All variant van de gekozen zijde, net zoals run_model.py
+    # dat voor single fails al doet.
+    side = near_miss.get("NearMissSide")
+    if side is not None and {"RawStrength_Home_All", "RawStrength_Away_All"} <= set(near_miss.columns):
+        import numpy as np
+        df["RuleStrengthCalibrated"] = np.where(
+            side.astype(str).str.upper() == "HOME",
+            near_miss["RawStrength_Home_All"],
+            np.where(
+                side.astype(str).str.upper() == "AWAY",
+                near_miss["RawStrength_Away_All"],
+                np.nan,
+            ),
+        )
+    else:
+        print("[near_miss] WAARSCHUWING: RawStrength_*_All ontbreekt; "
+              "strength blijft mogelijk 0.")
+
     rename_map = {
         "NearMissSide": "side",
         "NearMissReason": "fail_reason",
