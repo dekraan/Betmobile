@@ -264,45 +264,89 @@ def main() -> None:
     df = devig(df, ("close_home", "close_draw", "close_away"),
                ("cp_home", "cp_draw", "cp_away"))
 
-    # Van lang naar breed: één rij per (fixture, horizon)
+    # Van lang naar breed: één rij per (fixture, horizon).
+    #
+    # LET OP: kickoff en de slotkoersvelden staan op ELKE rij van df (ze
+    # komen per fixture uit de SQL), niet alleen op de Pinnacle-rijen. Ze
+    # moeten daarom uit df zelf komen. Werden ze uit de Pinnacle-merge
+    # gehaald, dan kreeg een fixture met alleen een Bet365-snapshot een lege
+    # kickoff_at en viel hij weg bij de notna()-filter hieronder — stil, en
+    # elke run opnieuw, want de NOT EXISTS-check ziet hem dan nooit staan.
+    basis = (df.sort_values("bookmaker_id")
+               .groupby(["fixture_id", "horizon"], as_index=False)
+               .agg(kickoff=("kickoff", "first"),
+                    close_captured_at=("close_captured_at", "first"),
+                    close_offset_h=("close_offset_h", "first"),
+                    close_p_home=("cp_home", "first"),
+                    close_p_draw=("cp_draw", "first"),
+                    close_p_away=("cp_away", "first")))
+
     pin = df[df.bookmaker_id == PINNACLE_ID].set_index(["fixture_id", "horizon"])
     b3 = df[df.bookmaker_id == BET365_ID].set_index(["fixture_id", "horizon"])
 
-    uit = pd.DataFrame(index=pin.index.union(b3.index)).reset_index()
-    uit = uit.merge(
-        pin[["kickoff", "captured_at", "offset_h", "p_home", "p_draw", "p_away"]]
+    uit = basis.merge(
+        pin[["captured_at", "offset_h", "p_home", "p_draw", "p_away"]]
         .rename(columns={"captured_at": "pin_captured_at", "offset_h": "pin_offset_h",
                          "p_home": "pin_p_home", "p_draw": "pin_p_draw",
                          "p_away": "pin_p_away"}),
         on=["fixture_id", "horizon"], how="left",
     ).merge(
-        b3[["captured_at", "offset_h", "p_home", "p_draw", "p_away",
-            "close_captured_at", "close_offset_h", "cp_home", "cp_draw", "cp_away"]]
+        b3[["captured_at", "offset_h", "p_home", "p_draw", "p_away"]]
         .rename(columns={"captured_at": "b365_captured_at", "offset_h": "b365_offset_h",
                          "p_home": "b365_p_home", "p_draw": "b365_p_draw",
-                         "p_away": "b365_p_away", "cp_home": "close_p_home",
-                         "cp_draw": "close_p_draw", "cp_away": "close_p_away"}),
+                         "p_away": "b365_p_away"}),
         on=["fixture_id", "horizon"], how="left",
     ).rename(columns={"horizon": "horizon_h", "kickoff": "kickoff_at"})
 
+    voor = len(uit)
     uit = uit[uit["kickoff_at"].notna()]
+    if voor != len(uit):
+        print(f"[let op] {voor - len(uit)} rijen zonder kickoff_at verwijderd")
 
     # Dekkingsrapport
     print("\n=== DEKKING PER HORIZON ===")
+    heeft_pin = uit["pin_p_home"].notna()
+    heeft_b365 = uit["b365_p_home"].notna()
+    heeft_close = uit["close_p_home"].notna()
+    uit["_compleet"] = heeft_pin & heeft_b365 & heeft_close
+    uit["_alleen_b365"] = heeft_b365 & ~heeft_pin
+    uit["_alleen_pin"] = heeft_pin & ~heeft_b365
+
     rap = uit.groupby("horizon_h").agg(
-        fixtures=("fixture_id", "nunique"),
+        rijen=("fixture_id", "size"),
         pin_ok=("pin_p_home", lambda s: s.notna().sum()),
         b365_ok=("b365_p_home", lambda s: s.notna().sum()),
-        beide=("fixture_id", "size"),
         close_ok=("close_p_home", lambda s: s.notna().sum()),
-        gem_pin_offset=("pin_offset_h", "mean"),
-        gem_b365_offset=("b365_offset_h", "mean"),
-    ).round(2)
-    rap["compleet"] = uit.groupby("horizon_h").apply(
-        lambda g: (g[["pin_p_home", "b365_p_home", "close_p_home"]]
-                   .notna().all(axis=1)).sum()
+        alleen_pin=("_alleen_pin", "sum"),
+        alleen_b365=("_alleen_b365", "sum"),
+        compleet=("_compleet", "sum"),
     )
     print(rap.to_string())
+
+    # Hoe ver liggen de meetpunten van het doelmoment? Bij een meetregel
+    # "laatste snapshot op of vóór kickoff - H" is de offset altijd >= H;
+    # hoe groter het verschil, hoe grover de meting.
+    print("\n=== AFSTAND TOT HET DOELMOMENT (uren voor kickoff) ===")
+    off = uit.groupby("horizon_h").agg(
+        pin_mediaan=("pin_offset_h", "median"),
+        pin_p90=("pin_offset_h", lambda s: s.quantile(0.90)),
+        pin_max=("pin_offset_h", "max"),
+        b365_mediaan=("b365_offset_h", "median"),
+        b365_p90=("b365_offset_h", lambda s: s.quantile(0.90)),
+        b365_max=("b365_offset_h", "max"),
+    ).round(2)
+    off.insert(0, "doel", off.index)
+    off["pin_overschot"] = (off["pin_mediaan"] - off["doel"]).round(2)
+    print(off.to_string())
+
+    if heeft_close.any():
+        c = uit.loc[heeft_close, "close_offset_h"]
+        print(f"\nSlotkoers (Bet365): mediaan {c.median():.2f} uur voor kickoff, "
+              f"p90 {c.quantile(0.90):.2f}, max {c.max():.2f}")
+        print("  Ligt de mediaan ver van 0, dan is dit geen slotkoers en meet")
+        print("  T1 iets anders dan bedoeld.")
+
+    uit = uit.drop(columns=["_compleet", "_alleen_b365", "_alleen_pin"])
 
     if args.dry_run:
         print("\n[dry-run] niets weggeschreven.")

@@ -14,6 +14,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from pathlib import Path
 import random
 import os
+import sys
 os.environ['WDM_LOG_LEVEL'] = '0' # Zet WebDriver Manager op stil
 
 from betmobile_settings import DB_CONFIG
@@ -409,8 +410,11 @@ class ECIScraper:
             ])
 
         except Exception as e:
-            logger.exception(f"Error scraping {competition_name}: {str(e)}")
-            return pd.DataFrame()
+            # Niet meer stil een lege DataFrame teruggeven: dan is een dode
+            # browser niet te onderscheiden van 'geen wedstrijden'. De run()
+            # vangt dit af en probeert de competitie later opnieuw.
+            logger.error(f"Error scraping {competition_name}: {str(e).splitlines()[0]}")
+            raise
 
     def save_to_database(self, matches, competition):
         """Save current ECI data and append a historical snapshot for every match."""
@@ -535,21 +539,30 @@ class ECIScraper:
                     continue
 
 
-    def run(self):
-        logger.info("=== ECI SCRAPER RUN START ===")
-        def init_driver():
-            options = webdriver.ChromeOptions()
-            options.add_argument("--start-maximized")
-            
-            # Verbergt de USB/GCM/DevTools meldingen in de terminal
-            options.add_argument('--log-level=3')
-            options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    # ------------------------------------------------------------------
+    # Browserbeheer
+    # ------------------------------------------------------------------
+    DRIVER_ATTEMPTS = 3          # pogingen per browserstart
+    BATCH_SIZE = 10              # competities per browsersessie
+    RETRY_PASS_PAUSE = (240, 360)  # pauze (s) voor de herkansingsronde
 
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
+    def _driver_path(self):
+        # Eén keer per run ophalen i.p.v. bij elke herstart (scheelt netwerk-
+        # verkeer en een foutbron).
+        if not hasattr(self, "_cached_driver_path"):
+            self._cached_driver_path = ChromeDriverManager().install()
+        return self._cached_driver_path
+
+    def _init_driver(self):
+        options = webdriver.ChromeOptions()
+        options.add_argument("--start-maximized")
+        options.add_argument('--log-level=3')
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+        service = Service(self._driver_path())
+        driver = webdriver.Chrome(service=service, options=options)
+        try:
             driver.get(self.url)
-
-            # Handle cookie consent
             try:
                 cookie_button = WebDriverWait(driver, 5).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, '.main-cookie-consent .btn'))
@@ -559,50 +572,120 @@ class ECIScraper:
             except Exception:
                 logger.info("No cookie consent button found")
 
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.CLASS_NAME, 'form-control'))
+            )
             return driver
+        except Exception:
+            self._quit(driver)
+            raise
 
-        driver = None
+    def _init_driver_with_retry(self):
+        for attempt in range(1, self.DRIVER_ATTEMPTS + 1):
+            try:
+                return self._init_driver()
+            except Exception as e:
+                logger.warning(
+                    f"Browserstart mislukt (poging {attempt}/{self.DRIVER_ATTEMPTS}): "
+                    f"{str(e).splitlines()[0]}"
+                )
+                if attempt < self.DRIVER_ATTEMPTS:
+                    time.sleep(30 * attempt)
+        raise RuntimeError(f"Browser kon na {self.DRIVER_ATTEMPTS} pogingen niet starten")
+
+    @staticmethod
+    def _quit(driver):
+        if driver is None:
+            return
         try:
-            driver = init_driver()
+            driver.quit()
+        except Exception:
+            pass  # sessie was al dood
 
-            # Wait for dropdown to be available
-            wait = WebDriverWait(driver, 10)
-            dropdown = wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'form-control')))
+    # ------------------------------------------------------------------
+    # Eén ronde over een lijst competities
+    # ------------------------------------------------------------------
+    def _scrape_pass(self, leagues):
+        """Scrapet de opgegeven competities. Geeft de mislukte terug."""
+        failed = []
+        driver = None
+        in_session = 0
+        try:
+            for idx, (key, league) in enumerate(leagues):
+                # (Her)start de browser bij begin, na een fout, of na BATCH_SIZE
+                if driver is not None and in_session >= self.BATCH_SIZE:
+                    self._quit(driver)
+                    driver = None
+                    logger.info("Browser closed for a short break")
+                    time.sleep(random.uniform(60, 120))
 
-            if not dropdown:
-                raise Exception("Competition dropdown not found")
+                if driver is None:
+                    try:
+                        driver = self._init_driver_with_retry()
+                        in_session = 0
+                    except Exception as e:
+                        logger.error(f"{e} - resterende {len(leagues) - idx} competities naar herkansing")
+                        failed.extend(leagues[idx:])
+                        return failed
 
-            # Process each competition
-            for i, (key, league) in enumerate(LEAGUES_CONFIG.items()):
                 logger.info(f"\nProcessing {league['name']}...")
-                df = self.scrape_competition(driver, league['name'], league['id'])
-                
+                try:
+                    df = self.scrape_competition(driver, league['name'], league['id'])
+                except Exception:
+                    failed.append((key, league))
+                    # Browser mogelijk in slechte staat: vers beginnen
+                    self._quit(driver)
+                    driver = None
+                    continue
+
+                in_session += 1
                 if not df.empty:
                     self.save_to_database(df, key)
                     logger.info(f"Saved {len(df)} matches for {league['name']} to database")
                 else:
                     logger.info(f"No data to save for {league['name']}")
-                
+
                 time.sleep(random.uniform(5, 10))
+        finally:
+            self._quit(driver)
+        return failed
 
-                # Close and re-open the browser every 10 competitions
-                if (i + 1) % 10 == 0:
-                    driver.quit()
-                    logger.info("Browser closed for a short break")
-                    time.sleep(random.uniform(60, 120))
-                    driver = init_driver()
+    def run(self):
+        """Scrapet alle competities; mislukte krijgen één herkansingsronde.
+        Alle rijen krijgen dezelfde snapshot_at (self.current_timestamp),
+        ook die uit de herkansing, zodat een run één snapshot blijft.
+        Exitcode 1 als er na de herkansing nog competities ontbreken."""
+        logger.info("=== ECI SCRAPER RUN START ===")
+        all_leagues = list(LEAGUES_CONFIG.items())
+        failed = []
+        try:
+            failed = self._scrape_pass(all_leagues)
 
-            logger.info("\nAll data saved to database")
+            if failed:
+                pause = random.uniform(*self.RETRY_PASS_PAUSE)
+                logger.warning(
+                    f"{len(failed)} competities mislukt, herkansing over {pause:.0f}s: "
+                    + ", ".join(k for k, _ in failed)
+                )
+                time.sleep(pause)
+                failed = self._scrape_pass(failed)
 
         except Exception as e:
             logger.exception(f"Fatal error: {str(e)}")
-        finally:
-            if driver is not None:
-                driver.quit()
-                logger.info("Browser closed")
-                
-            logger.info("=== ECI SCRAPER RUN END ===")
+            failed = failed or all_leagues
+
+        ok = len(all_leagues) - len(failed)
+        if failed:
+            logger.error(
+                f"RUN ONVOLLEDIG: {ok}/{len(all_leagues)} competities. Ontbrekend: "
+                + ", ".join(k for k, _ in failed)
+            )
+        else:
+            logger.info(f"RUN VOLLEDIG: {ok}/{len(all_leagues)} competities")
+        logger.info("=== ECI SCRAPER RUN END ===")
+        return not failed
 
 if __name__ == "__main__":
     scraper = ECIScraper()
-    scraper.run()
+    complete = scraper.run()
+    sys.exit(0 if complete else 1)

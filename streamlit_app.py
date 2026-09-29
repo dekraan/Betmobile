@@ -202,14 +202,15 @@ def age_text(dt_value):
     except Exception:
         return "?"
 
-def to_local(dt_value) -> str:
-    """Converteer een timestamp naar lokale tijd (Europe/Amsterdam), ongeacht of hij tz-aware is."""
+def to_local(dt_value, naive_is: str = "UTC") -> str:
+    """Converteer een timestamp naar Europe/Amsterdam.
+    naive_is: hoe een tz-naïeve waarde gelezen wordt ('UTC' of 'Europe/Amsterdam')."""
     dt = pd.to_datetime(dt_value, errors="coerce")
     if pd.isna(dt):
         return "—"
     if dt.tzinfo is None:
-        dt = dt.tz_localize('UTC')
-    return dt.tz_convert('Europe/Amsterdam').strftime("%H:%M")
+        dt = dt.tz_localize(naive_is)
+    return dt.tz_convert("Europe/Amsterdam").strftime("%H:%M")
 
 def prepare_display_df(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
@@ -1430,6 +1431,8 @@ def add_candidate_columns(df: pd.DataFrame) -> pd.DataFrame:
     out["kant_kans"]   = np.where(thuis, out["home_win_pct"], out["away_win_pct"])
     out["kant_value"]  = np.where(thuis, out["value_home"], out["value_away"])
     out["kant_drift"]  = np.where(thuis, out["home_drift_pct"], out["away_drift_pct"])
+    out["kant_markt"]    = np.where(thuis, out["mkt_home"], out["mkt_away"])
+    out["kant_verschil"] = out["kant_kans"] - out["kant_markt"]
     out["fails"]       = np.where(thuis, out["home_fail_count"], out["away_fail_count"])
 
     # Faalredenen van de kandidaatzijde, in leesbare taal.
@@ -2460,6 +2463,9 @@ def render_all_matches() -> None:
             "Wedstrijd": df["home_team"].astype(str) + " - " + df["away_team"].astype(str),
             "Comp":      df["competition"],
             "Kant":      df["kant"],
+            "ECI%":      (pd.to_numeric(df["kant_kans"], errors="coerce") * 100).round(1),
+            "Markt%":    (pd.to_numeric(df["kant_markt"], errors="coerce") * 100).round(1),
+            "ECI−Markt": (pd.to_numeric(df["kant_verschil"], errors="coerce") * 100).round(1),
             "Odds":      pd.to_numeric(df["kant_odds"], errors="coerce").round(2),
             "Value":     pd.to_numeric(df["kant_value"], errors="coerce").round(3),
             "Drift":     df["kant_drift"].map(drift_woord),
@@ -2472,6 +2478,22 @@ def render_all_matches() -> None:
             width="stretch",
             hide_index=True,
             column_config={
+                "ECI%": st.column_config.NumberColumn(
+                    "ECI%",
+                    format="%.1f%%",
+                    help=f"ECI's kans op de kant-zijde. Drempel: "
+                         f"{float(ECI_RULE_PARAMS.get('min_prob', 0.52)) * 100:.0f}%",
+                ),
+                "Markt%": st.column_config.NumberColumn(
+                    "Markt%",
+                    format="%.1f%%",
+                    help="Ge-devigde bookmakerkans (Shin) op dezelfde zijde.",
+                ),
+                "ECI−Markt": st.column_config.NumberColumn(
+                    "ECI−Markt",
+                    format="%+.1f",
+                    help="Positief = ECI optimistischer dan de markt.",
+                ),
                 "Value": st.column_config.NumberColumn(
                     "Value",
                     format="%.3f",
@@ -2556,7 +2578,7 @@ with tab_status:
 
     c2.metric(
         "Model run",
-        to_local(model_time),
+        to_local(model_time, naive_is="Europe/Amsterdam"),
         age_text(model_time),
     )
     

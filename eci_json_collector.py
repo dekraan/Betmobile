@@ -4,8 +4,11 @@ eci_json_collector.py
 
 Append-only collector voor de ECI REST-feed, met ingebouwde diff-analyse.
 
-Draait NAAST je bestaande eci_scraper.py. Schrijft niets naar PostgreSQL en
-raakt geen bestaande bestanden aan. Alles gaat naar losse JSON-bestanden.
+Draait NAAST je bestaande eci_scraper.py. Raakt geen bestaande bestanden en
+geen productietabellen aan. Primaire opslag is losse JSON-bestanden; daarnaast
+gaat elke run ook naar de aparte staging-tabel eci_rest_staging, zodat je hem
+in SQL naast eci_data_snapshots kunt leggen. eci_data en eci_data_snapshots
+blijven onaangeroerd (meetperiode).
 
 WAAROM
 ------
@@ -29,6 +32,9 @@ GEBRUIK
     python eci_json_collector.py collect --leagues 2,52,656
 
     python eci_json_collector.py runs
+
+    python eci_json_collector.py load              (alle runs naar de tabel)
+    python eci_json_collector.py load --run run_20260831T1030Z
 
     (twee dagen later)
     python eci_json_collector.py diff
@@ -63,10 +69,17 @@ PAGE_URL = f"{BASE}/match-odds/"
 
 ROOT = Path(__file__).resolve().parent / "eci_snapshots"
 
+# Logmap, zelfde patroon als eci_scraper.py: logs/eci_collect_YYYYMMDD.log
+LOGDIR = Path(__file__).resolve().parent / "logs"
+
 # Pauze tussen requests. Niet lager zetten.
 DELAY_SECONDS = 1.5
 TIMEOUT = 30
 RETRIES = 2
+
+# Staging-tabel voor vergelijking met de scraper. Bewust NIET eci_data of
+# eci_data_snapshots: die voeden de meetperiode.
+STAGING_TABLE = "eci_rest_staging"
 
 # Velden waarvan we de waarde vergelijken in de diff.
 NUMERIC_FIELDS = (
@@ -86,6 +99,46 @@ EPSILON = 1e-9
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+class _Tee:
+    """Schrijft tegelijk naar het scherm en naar het logbestand."""
+
+    def __init__(self, *streams):
+        self.streams = [s for s in streams if s is not None]
+
+    def write(self, data):
+        for s in self.streams:
+            try:
+                s.write(data)
+                s.flush()
+            except Exception:
+                pass
+        return len(data)
+
+    def flush(self):
+        for s in self.streams:
+            try:
+                s.flush()
+            except Exception:
+                pass
+
+
+def setup_logging():
+    """Log naar logs/eci_collect_YYYYMMDD.log, met de lokale datum in de naam.
+
+    Zo hoeft de geplande taak geen cmd.exe en geen redirect te gebruiken:
+    Execute is gewoon python.exe, net als bij eci_scraper.py.
+    """
+    LOGDIR.mkdir(parents=True, exist_ok=True)
+    path = LOGDIR / f"eci_collect_{datetime.now().strftime('%Y%m%d')}.log"
+    fh = open(path, "a", encoding="utf-8")
+    fh.write(f"\n=== start {datetime.now(timezone.utc).isoformat()} ===\n")
+    fh.flush()
+    # sys.__stdout__ is None als de taak zonder console draait.
+    sys.stdout = _Tee(sys.__stdout__, fh)
+    sys.stderr = _Tee(sys.__stderr__, fh)
+    return fh
+
 
 def run_id() -> str:
     return datetime.now(timezone.utc).strftime("run_%Y%m%dT%H%MZ")
@@ -246,6 +299,171 @@ def collect(only_leagues: list[str] | None) -> None:
         print(f"[--] mislukte competities: {failures}")
     print(f"[OK] weggeschreven naar {jsonl}")
 
+    # Daarna naar de staging-tabel. JSON is leidend: als de database faalt,
+    # is de run niet verloren en kun je hem later laden met 'load --run'.
+    try:
+        load_run_to_db(get_engine(), outdir)
+    except SystemExit as exc:
+        print(f"[--] staging-tabel overgeslagen: {exc.code}")
+    except Exception as exc:
+        print(f"[--] staging-tabel mislukt ({exc}); JSON staat veilig. "
+              f"Later laden: python eci_json_collector.py load --run {rid}")
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL staging (eci_rest_staging)
+# ---------------------------------------------------------------------------
+
+DDL = f"""
+CREATE TABLE IF NOT EXISTS {STAGING_TABLE} (
+    run_id               text        NOT NULL,
+    fetched_at_utc       timestamptz NOT NULL,
+    n_competition_id     text        NOT NULL,
+    n_match_id           text        NOT NULL,
+    has_results          smallint,
+    home_eci             numeric,
+    away_eci             numeric,
+    home_ranking_points  numeric,
+    away_ranking_points  numeric,
+    odd_home_win         numeric,
+    odd_draw             numeric,
+    odd_away_win         numeric,
+    raw                  jsonb       NOT NULL,
+    loaded_at            timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (run_id, n_competition_id, n_match_id)
+);
+CREATE INDEX IF NOT EXISTS {STAGING_TABLE}_match_idx
+    ON {STAGING_TABLE} (n_match_id, fetched_at_utc);
+"""
+
+INSERT_SQL = f"""
+INSERT INTO {STAGING_TABLE} (
+    run_id, fetched_at_utc, n_competition_id, n_match_id, has_results,
+    home_eci, away_eci, home_ranking_points, away_ranking_points,
+    odd_home_win, odd_draw, odd_away_win, raw
+) VALUES (
+    :run_id, CAST(:fetched_at_utc AS timestamptz), :n_competition_id,
+    :n_match_id, CAST(:has_results AS smallint),
+    CAST(:home_eci AS numeric), CAST(:away_eci AS numeric),
+    CAST(:home_ranking_points AS numeric), CAST(:away_ranking_points AS numeric),
+    CAST(:odd_home_win AS numeric), CAST(:odd_draw AS numeric),
+    CAST(:odd_away_win AS numeric), CAST(:raw AS jsonb)
+)
+ON CONFLICT (run_id, n_competition_id, n_match_id) DO NOTHING
+"""
+
+
+def get_engine():
+    """Zelfde DSN als de rest van Betmobile, via betmobile_settings -> .env."""
+    try:
+        from sqlalchemy import create_engine
+    except ImportError:
+        sys.exit("sqlalchemy ontbreekt. Installeer met: pip install sqlalchemy psycopg2")
+    try:
+        from betmobile_settings import DB_DSN
+    except ImportError:
+        import os
+        DB_DSN = os.environ.get("DB_DSN")
+    if not DB_DSN:
+        sys.exit("Geen DB_DSN gevonden (betmobile_settings.py of omgeving).")
+    return create_engine(DB_DSN)
+
+
+def to_num_str(value):
+    """Exacte decimale string voor Postgres numeric, of None.
+
+    Via to_float gecontroleerd, maar de oorspronkelijke string doorgegeven:
+    zo komt er geen float-afronding in de tabel en blijven waarden
+    precies vergelijkbaar met wat de feed leverde.
+    """
+    if to_float(value) is None:
+        return None
+    return str(value).strip()
+
+
+def row_to_params(rid: str, row: dict, fallback_fetched: str | None) -> dict | None:
+    mid = row.get("n_MatchID")
+    cid = row.get("n_CompetitionID")
+    if not mid or not cid:
+        return None
+    has_results = str(row.get("hasResults")).strip()
+    return {
+        "run_id": rid,
+        "fetched_at_utc": row.get("fetched_at_utc") or fallback_fetched,
+        "n_competition_id": str(cid),
+        "n_match_id": str(mid),
+        "has_results": has_results if has_results in ("0", "1") else None,
+        "home_eci": to_num_str(row.get("HomeECI")),
+        "away_eci": to_num_str(row.get("AwayECI")),
+        "home_ranking_points": to_num_str(row.get("HomeRankingPoints")),
+        "away_ranking_points": to_num_str(row.get("AwayRankingPoints")),
+        "odd_home_win": to_num_str(row.get("n_OddHomeWin")),
+        "odd_draw": to_num_str(row.get("n_OddDraw")),
+        "odd_away_win": to_num_str(row.get("n_OddAwayWin")),
+        "raw": json.dumps(row, ensure_ascii=False),
+    }
+
+
+def load_run_to_db(engine, run_dir: Path) -> tuple[int, int]:
+    """Laad een run in de staging-tabel. Idempotent: dubbel laden kan geen kwaad.
+
+    Geeft (nieuw ingevoegd, overgeslagen) terug.
+    """
+    from sqlalchemy import text
+
+    path = run_dir / "matches.jsonl"
+    if not path.exists():
+        print(f"  {run_dir.name}: geen matches.jsonl, overgeslagen")
+        return 0, 0
+
+    fallback = None
+    meta_path = run_dir / "meta.json"
+    if meta_path.exists():
+        fallback = json.loads(meta_path.read_text(encoding="utf-8")).get("collected_at_utc")
+
+    params, skipped = [], 0
+    with path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            p = row_to_params(run_dir.name, json.loads(line), fallback)
+            if p is None or p["fetched_at_utc"] is None:
+                skipped += 1
+                continue
+            params.append(p)
+
+    count_sql = text(f"SELECT count(*) FROM {STAGING_TABLE} WHERE run_id = :r")
+    with engine.begin() as conn:
+        conn.execute(text(DDL))
+        before = conn.execute(count_sql, {"r": run_dir.name}).scalar()
+        if params:
+            conn.execute(text(INSERT_SQL), params)
+        after = conn.execute(count_sql, {"r": run_dir.name}).scalar()
+
+    inserted = after - before
+    dupes = len(params) - inserted
+    print(f"  {run_dir.name}: {inserted} ingevoegd, {dupes} al aanwezig, "
+          f"{skipped} onbruikbaar")
+    return inserted, skipped
+
+
+def load(only_run: str | None) -> None:
+    runs = list_runs()
+    if only_run:
+        runs = [r for r in runs if r.name == only_run]
+        if not runs:
+            sys.exit(f"Run {only_run} niet gevonden in {ROOT}")
+    if not runs:
+        sys.exit("Geen runs om te laden.")
+    engine = get_engine()
+    print(f"Laden naar {STAGING_TABLE}: {len(runs)} run(s)\n")
+    total = 0
+    for r in runs:
+        ins, _ = load_run_to_db(engine, r)
+        total += ins
+    print(f"\n[OK] {total} nieuwe rijen in {STAGING_TABLE}")
+
 
 # ---------------------------------------------------------------------------
 # runs
@@ -378,6 +596,9 @@ def main() -> None:
 
     sub.add_parser("runs", help="toon opgeslagen runs")
 
+    p_load = sub.add_parser("load", help=f"laad runs in {STAGING_TABLE}")
+    p_load.add_argument("--run", help="alleen deze run (default: alle)")
+
     p_diff = sub.add_parser("diff", help="vergelijk twee runs op n_MatchID")
     p_diff.add_argument("--run-a", help="oudste run (default: eerste)")
     p_diff.add_argument("--run-b", help="nieuwste run (default: laatste)")
@@ -385,10 +606,30 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "collect":
-        only = [x.strip() for x in args.leagues.split(",")] if args.leagues else None
-        collect(only)
+        # Alleen collect draait ongezien via Task Scheduler, dus alleen daar
+        # loggen. runs en diff draai je zelf en lees je van het scherm.
+        setup_logging()
+        try:
+            only = ([x.strip() for x in args.leagues.split(",")]
+                    if args.leagues else None)
+            collect(only)
+        except SystemExit as exc:
+            # sys.exit("tekst") uit bijvoorbeeld get_league_index: de reden
+            # moet in het log staan, anders is een mislukte taak stil.
+            if exc.code not in (0, None):
+                print(f"[FOUT] afgebroken: {exc.code}")
+            raise
+        except Exception:
+            import traceback
+            print("[FOUT] onverwachte fout:")
+            traceback.print_exc()
+            sys.exit(1)
+        else:
+            print(f"[OK] klaar om {utc_now_iso()}")
     elif args.command == "runs":
         show_runs()
+    elif args.command == "load":
+        load(args.run)
     elif args.command == "diff":
         diff(args.run_a, args.run_b)
 
