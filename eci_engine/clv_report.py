@@ -333,21 +333,36 @@ def build_clv_frame(
 def summarize(df: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
     group = df.groupby(by, observed=True) if by else [("ALL", df)]
     rows = []
-    iterator = group if by is None else group
-    for name, part in iterator:
+    for name, part in group:
         n = len(part)
         if n == 0:
             continue
         edge = part["edge_vs_close"].to_numpy(dtype=float)
-        se = edge.std(ddof=1) / np.sqrt(n) if n > 1 else np.nan
+        comp = part["competition"].to_numpy() if "competition" in part else np.zeros(n)
+        ok = np.isfinite(edge)
+        edge, comp = edge[ok], comp[ok]
+        gem = edge.mean() if len(edge) else np.nan
+
+        # Cluster-robuuste fout per competitie: picks uit dezelfde competitie
+        # delen marktstructuur en zijn geen losse waarnemingen.
+        codes = pd.factorize(pd.Series(comp))[0]
+        G = int(codes.max()) + 1 if len(edge) else 0
+        if len(edge) > 1 and G > 1:
+            r = edge - gem
+            meat = sum(r[codes == g].sum() ** 2 for g in range(G))
+            se = np.sqrt((G / (G - 1)) * meat) / len(edge)
+        else:
+            se = np.nan
+
         rows.append(
             {
                 (by or "groep"): name,
                 "picks": n,
+                "clusters": G,
                 "clv_odds_pct": part["clv_odds_pct"].mean(),
                 "share_clv_pos": (part["clv_odds_pct"] > 0).mean(),
-                "edge_vs_close": edge.mean(),
-                "t_stat": edge.mean() / se if se and se > 0 else np.nan,
+                "edge_vs_close": gem,
+                "t_stat": gem / se if se and se > 0 else np.nan,
                 "realized_roi": part["profit"].mean(),
             }
         )

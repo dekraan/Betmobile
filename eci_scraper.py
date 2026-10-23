@@ -19,6 +19,23 @@ os.environ['WDM_LOG_LEVEL'] = '0' # Zet WebDriver Manager op stil
 
 from betmobile_settings import DB_CONFIG
 
+def fix_mojibake(s):
+    if not isinstance(s, str):
+        return s
+    out = bytearray()
+    for c in s:
+        try:
+            out += c.encode("cp1252")
+        except UnicodeEncodeError:
+            if ord(c) < 256:
+                out.append(ord(c))
+            else:
+                return s
+    try:
+        return out.decode("utf-8")
+    except UnicodeDecodeError:
+        return s
+
 # Setup logging
 LOG_DIR = Path(__file__).resolve().parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -378,8 +395,8 @@ class ECIScraper:
                     # De bron (legacy Infostrada-backend) levert soms namen met '?'
                     # i.p.v. diakrieten (N?mme, BK H?cken, Brei?ablik). Repareer
                     # o.b.v. bekende namen; lukt dat niet, sla de rij over.
-                    home_team = self.repair_team_name(home_team, competition_name)
-                    away_team = self.repair_team_name(away_team, competition_name)
+                    home_team = self.repair_team_name(fix_mojibake(home_team), competition_name)
+                    away_team = self.repair_team_name(fix_mojibake(away_team), competition_name)
                     if home_team is None or away_team is None:
                         continue
 
