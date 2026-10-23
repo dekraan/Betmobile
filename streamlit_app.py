@@ -1621,8 +1621,9 @@ FROM public.picks_evaluated_unique_v;
 
 # ---------------------------------------------------------------------
 # OUT-OF-SAMPLE PANEEL
-# Freeze-datum: vanaf hier zijn de regels bevroren en telt elke unieke
-# pick als eerlijke out-of-sample test (ROI + closing line value).
+# Freeze-datum: vanaf hier zijn de regels bevroren. Volgens MEETAFSPRAAK.md
+# (23-10-2026) tellen alleen unieke MAIN-picks; secundaire picks niet.
+# CLV met Shin-devig, zoals clv_report.py. Oordeel bij 150 MAIN-picks.
 # ---------------------------------------------------------------------
 FREEZE_DATE = "2026-08-18"
 
@@ -1637,6 +1638,7 @@ WITH settled AS (
         END AS selected_odds
     FROM public.picks_evaluated_unique_v
     WHERE selection IS NOT NULL
+      AND pick_type = 'MAIN'
       AND outcome IN ('WIN','LOSS')
       AND COALESCE(date_ts, NULLIF(date::text, '')::date::timestamp) >= :freeze
 )
@@ -1670,6 +1672,7 @@ WITH picks AS (
         END AS odds_taken
     FROM public.picks_evaluated_unique_v
     WHERE selection IS NOT NULL
+      AND pick_type = 'MAIN'
       AND outcome IN ('WIN','LOSS')
       AND COALESCE(date_ts, NULLIF(date::text, '')::date::timestamp) >= :freeze
 ),
@@ -1687,26 +1690,44 @@ closing AS (
       AND s.captured_at <= f.date_utc
     ORDER BY s.fixture_id, s.captured_at DESC
 ),
-calc AS (
-    SELECT
-        li.odds_taken,
-        (1.0 / CASE
-            WHEN li.selection = 'HOME' THEN c.odds_home
-            WHEN li.selection = 'AWAY' THEN c.odds_away
-            ELSE c.odds_draw
-        END)
-        / (1.0 / c.odds_home + 1.0 / c.odds_draw + 1.0 / c.odds_away) AS p_close
+oos_rijen AS (
+    SELECT li.selection, li.odds_taken, c.odds_home, c.odds_draw, c.odds_away
     FROM linked li
     JOIN closing c ON c.fixture_id = li.fixture_id
     WHERE c.odds_home > 1.01 AND c.odds_draw > 1.01 AND c.odds_away > 1.01
 )
-SELECT
-    COUNT(*) AS clv_bets,
-    ROUND(AVG(p_close * odds_taken - 1)::numeric, 4) AS avg_edge_vs_close,
-    ROUND(SUM(CASE WHEN p_close * odds_taken - 1 > 0 THEN 1 ELSE 0 END)::numeric
-          / NULLIF(COUNT(*), 0), 4) AS share_positive
-FROM calc;
+SELECT * FROM oos_rijen;
 """
+
+
+def oos_clv_shin(rows: pd.DataFrame) -> pd.DataFrame:
+    """Edge vs close met Shin-devig (MEETAFSPRAAK.md), zoals clv_report.py.
+
+    p_close = Shin-kans van de gekozen kant in de laatste Bet365-snapshot
+    voor de aftrap; edge = p_close x odds_genomen - 1.
+    """
+    if rows is None or rows.empty:
+        return pd.DataFrame([{"clv_bets": 0, "avg_edge_vs_close": np.nan, "share_positive": np.nan}])
+    import sys as _sys
+    from pathlib import Path as _P
+    _eng = str(_P(__file__).resolve().parent / "eci_engine")
+    if _eng not in _sys.path:
+        _sys.path.insert(0, _eng)
+    from prob_calibration import devig_shin
+
+    arr = rows[["odds_home", "odds_draw", "odds_away"]].to_numpy(dtype=float)
+    p, _z = devig_shin(arr)
+    kol = rows["selection"].map({"HOME": 0, "DRAW": 1, "AWAY": 2}).to_numpy()
+    ok = ~pd.isna(kol)
+    p_close = np.full(len(rows), np.nan)
+    p_close[ok] = p[np.arange(len(rows))[ok], kol[ok].astype(int)]
+    edge = p_close * pd.to_numeric(rows["odds_taken"], errors="coerce").to_numpy(float) - 1.0
+    edge = edge[np.isfinite(edge)]
+    return pd.DataFrame([{
+        "clv_bets": int(len(edge)),
+        "avg_edge_vs_close": float(edge.mean()) if len(edge) else np.nan,
+        "share_positive": float((edge > 0).mean()) if len(edge) else np.nan,
+    }])
 
 
 SQL_SETTLED_ROI = """
@@ -2631,20 +2652,21 @@ with tab_status:
         st.divider()
         st.subheader("Out-of-sample sinds freeze")
         st.caption(
-            f"Regels bevroren per {FREEZE_DATE}. Unieke picks vanaf die wedstrijddatum. "
-            "Afspraak: oordeel bij 150-200 picks, op ROI en edge vs close samen."
+            f"Regels bevroren per {FREEZE_DATE}. Telt: unieke MAIN-picks vanaf die wedstrijddatum "
+            "(secundaire picks niet). Afspraak (MEETAFSPRAAK.md): oordeel bij 150 MAIN-picks, "
+            "op ROI en edge vs close (Shin) samen."
         )
         try:
             oos = query_df(SQL_OOS_SUMMARY, {"freeze": FREEZE_DATE})
             if not oos.empty and int(oos.iloc[0]["bets"] or 0) > 0:
                 o = oos.iloc[0]
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Bets", metric_value(o["bets"]))
+                c1.metric("MAIN-picks", metric_value(o["bets"]))
                 c2.metric("Profit", f"{float(o['profit']):+.2f} units")
                 c3.metric("ROI", f"{float(o['roi']):+.1%}")
                 c4.metric("Hit rate", f"{float(o['hitrate']):.1%}")
                 try:
-                    clv = query_df(build_oos_clv_sql(), {"freeze": FREEZE_DATE})
+                    clv = oos_clv_shin(query_df(build_oos_clv_sql(), {"freeze": FREEZE_DATE}))
                     if not clv.empty and int(clv.iloc[0]["clv_bets"] or 0) > 0:
                         cl = clv.iloc[0]
                         d1, d2, d3, _ = st.columns(4)
